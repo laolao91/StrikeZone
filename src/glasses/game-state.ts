@@ -181,6 +181,7 @@ export async function selectGame(gamePk: number): Promise<void> {
   state.pitchHistoryIndex = null
   state.matchupStats = null
   await saveSettings({ selectedGamePk: gamePk })
+  window.dispatchEvent(new CustomEvent('strikezone:game-changed', { detail: { gamePk } }))
   await refresh()
 }
 

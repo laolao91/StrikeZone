@@ -2,7 +2,7 @@ import type { Game, AtBat, Pitch, MatchupStats } from '../lib/types'
 import { formatPitchType } from '../data/pitch-types'
 import { getDotPosition, renderZoneGrid } from './zone'
 
-const GRID_COLS = 7
+const GRID_COLS = 11
 
 const DIVIDER = '━'.repeat(38)
 const CHARS_PER_LINE = 38
@@ -90,7 +90,7 @@ function buildTwoColumnLines(
 
   lines.push(`${zoneLabel}${COL_GAP}${pitchType}`)
 
-  const extraAbove = gridRows.length === 8 && !gridRows[0].startsWith('+')
+  const extraAbove = gridRows.length === 6 && !gridRows[0].startsWith('+')
   const startGridIdx = extraAbove ? 1 : 0
 
   if (extraAbove) {

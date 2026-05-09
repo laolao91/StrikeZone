@@ -83,6 +83,16 @@ export function SettingsApp() {
   const pitchCountRef = useRef(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Sync when glasses select a game
+  useEffect(() => {
+    function onGameChanged(e: Event) {
+      const gamePk = (e as CustomEvent<{ gamePk: number }>).detail.gamePk
+      setSelectedPk(gamePk)
+    }
+    window.addEventListener('strikezone:game-changed', onGameChanged)
+    return () => window.removeEventListener('strikezone:game-changed', onGameChanged)
+  }, [])
+
   // Load schedule + saved selection on mount
   useEffect(() => {
     async function load() {

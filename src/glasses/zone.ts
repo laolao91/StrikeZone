@@ -35,46 +35,61 @@ export function getDotPosition(
   }
 }
 
-function dotForRow(pos: DotPosition, row: 0 | 1 | 2): string {
-  if (pos.inZone) {
-    return pos.row === row ? pos.col === 0 ? '|●| | |'
-                           : pos.col === 1 ? '| |●| |'
-                           : '| | |●|'
-                          : '| | | |'
+// Border-only strike zone: outer rectangle, dot inside at the zone position.
+// All rows are 11 chars wide: +---------+ or |         |
+const GRID_INNER = 9
+const BORDER_ROW = '+' + '-'.repeat(GRID_INNER) + '+'
+const EMPTY_ROW  = '|' + ' '.repeat(GRID_INNER) + '|'
+
+// Interior positions for columns 0, 1, 2 within the 9-char interior.
+const COL_POS = [1, 4, 7] as const
+
+function innerRow(dotCol: 0 | 1 | 2 | 'left' | 'right' | null): string {
+  const cells = Array<string>(GRID_INNER).fill(' ')
+  if (dotCol !== null) {
+    const pos = dotCol === 'left' ? 0
+              : dotCol === 'right' ? GRID_INNER - 1
+              : COL_POS[dotCol]
+    cells[pos] = '●'
   }
-  const vPos = pos.vPos
-  if (typeof vPos === 'number' && vPos === row) {
-    if (pos.hPos === 'left')  return '●| | | |'
-    if (pos.hPos === 'right') return '| | | |●'
-  }
-  return '| | | |'
+  return '|' + cells.join('') + '|'
 }
 
-function dotLineBelow(hPos: 'left' | 'right' | 0 | 1 | 2): string {
-  if (hPos === 'left')  return '●'
-  if (hPos === 0)       return ' ●'
-  if (hPos === 1)       return '  ●'
-  if (hPos === 2)       return '   ●'
-  return '    ●'
+// Dot above or below the grid, aligned to the horizontal column position.
+function dotOutsideLine(hPos: 'left' | 'right' | 0 | 1 | 2): string {
+  // Overall offset = 1 (for '+' border char) + COL_POS[col]
+  const offset = hPos === 'left' ? 0
+               : hPos === 0 ? 2
+               : hPos === 1 ? 5
+               : hPos === 2 ? 8
+               : GRID_INNER + 1  // 'right': just past the closing '+'
+  return ' '.repeat(offset) + '●'
 }
 
 export function renderZoneGrid(pos: DotPosition): string[] {
   const rows: string[] = []
 
   if (!pos.inZone && pos.vPos === 'above') {
-    rows.push(dotLineBelow(pos.hPos))
+    rows.push(dotOutsideLine(pos.hPos))
   }
 
-  rows.push('+-+-+-+')
-  rows.push(dotForRow(pos, 0))
-  rows.push('+-+-+-+')
-  rows.push(dotForRow(pos, 1))
-  rows.push('+-+-+-+')
-  rows.push(dotForRow(pos, 2))
-  rows.push('+-+-+-+')
+  rows.push(BORDER_ROW)
+
+  for (let r = 0; r <= 2; r++) {
+    if (pos.inZone && pos.row === r) {
+      rows.push(innerRow(pos.col))
+    } else if (!pos.inZone && typeof pos.vPos === 'number' && pos.vPos === r) {
+      // vPos is a number only when hPos is 'left' or 'right'
+      rows.push(innerRow(pos.hPos as 'left' | 'right'))
+    } else {
+      rows.push(EMPTY_ROW)
+    }
+  }
+
+  rows.push(BORDER_ROW)
 
   if (!pos.inZone && pos.vPos === 'below') {
-    rows.push(dotLineBelow(pos.hPos))
+    rows.push(dotOutsideLine(pos.hPos))
   }
 
   return rows
