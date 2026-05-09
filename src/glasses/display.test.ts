@@ -160,9 +160,13 @@ describe('renderGameList', () => {
     expect(body).toContain('SF')
   })
 
-  it('marks selected game with an indicator', () => {
+  it('marks selected game with an indicator, not others', () => {
     const body = renderGameList(games, 0)
-    expect(body).toContain('▶')
+    const lines = body.split('\n')
+    const nyy = lines.find(l => l.includes('NYY'))
+    const lad = lines.find(l => l.includes('LAD'))
+    expect(nyy).toContain('▶')
+    expect(lad).not.toContain('▶')
   })
 })
 
@@ -182,5 +186,26 @@ describe('renderStateScreen', () => {
     const body = renderStateScreen('error')
     expect(body).toContain('Unable to load')
     expect(body).toContain('Tap to retry')
+  })
+
+  it('renders starting-soon state with team names', () => {
+    const body = renderStateScreen('starting-soon', mockGame)
+    expect(body).toContain('NYY')
+    expect(body).toContain('BOS')
+    expect(body).toContain('Game Starting Soon')
+  })
+
+  it('renders delayed state with team names', () => {
+    const body = renderStateScreen('delayed', mockGame)
+    expect(body).toContain('NYY')
+    expect(body).toContain('BOS')
+    expect(body).toContain('Rain Delay')
+  })
+
+  it('renders final state with score', () => {
+    const body = renderStateScreen('final', mockGame)
+    expect(body).toContain('NYY')
+    expect(body).toContain('BOS')
+    expect(body).toContain('Final')
   })
 })
