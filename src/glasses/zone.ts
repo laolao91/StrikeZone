@@ -1,5 +1,12 @@
-const ZONE_LEFT = -0.83
-const ZONE_RIGHT = 0.83
+const ZONE_LEFT  = -0.83
+const ZONE_RIGHT =  0.83
+
+// Fixed coordinate range for the image canvas (feet).
+// The zone is drawn within this range so out-of-zone pitches are still visible.
+const IMG_X_MIN = -1.5
+const IMG_X_MAX =  1.5
+const IMG_Z_MIN =  0.5
+const IMG_Z_MAX =  4.5
 
 export type DotPosition =
   | { inZone: true; row: 0 | 1 | 2; col: 0 | 1 | 2 }
@@ -35,62 +42,60 @@ export function getDotPosition(
   }
 }
 
-// Border-only strike zone: outer rectangle, dot inside at the zone position.
-// All rows are 11 chars wide: +---------+ or |         |
-const GRID_INNER = 9
-const BORDER_ROW = '+' + '-'.repeat(GRID_INNER) + '+'
-const EMPTY_ROW  = '|' + ' '.repeat(GRID_INNER) + '|'
+// Render the strike zone as a pixel image.
+// Returns one 4-bit value (0–15) per pixel, row-major, top-to-bottom.
+// 15 = white (bright green on glasses), 0 = black (transparent).
+export function renderZoneImageData(
+  pX: number,
+  pZ: number,
+  szTop: number,
+  szBot: number,
+  width: number,
+  height: number
+): number[] {
+  const pixels = new Array(width * height).fill(0)
 
-// Interior positions for columns 0, 1, 2 within the 9-char interior.
-const COL_POS = [1, 4, 7] as const
+  const margin = 6
 
-function innerRow(dotCol: 0 | 1 | 2 | 'left' | 'right' | null): string {
-  const cells = Array<string>(GRID_INNER).fill(' ')
-  if (dotCol !== null) {
-    const pos = dotCol === 'left' ? 0
-              : dotCol === 'right' ? GRID_INNER - 1
-              : COL_POS[dotCol]
-    cells[pos] = '●'
+  function toPixX(x: number): number {
+    return Math.round(margin + ((x - IMG_X_MIN) / (IMG_X_MAX - IMG_X_MIN)) * (width  - 2 * margin))
   }
-  return '|' + cells.join('') + '|'
-}
-
-// Dot above or below the grid, aligned to the horizontal column position.
-function dotOutsideLine(hPos: 'left' | 'right' | 0 | 1 | 2): string {
-  // Overall offset = 1 (for '+' border char) + COL_POS[col]
-  const offset = hPos === 'left' ? 0
-               : hPos === 0 ? 2
-               : hPos === 1 ? 5
-               : hPos === 2 ? 8
-               : GRID_INNER + 1  // 'right': just past the closing '+'
-  return ' '.repeat(offset) + '●'
-}
-
-export function renderZoneGrid(pos: DotPosition): string[] {
-  const rows: string[] = []
-
-  if (!pos.inZone && pos.vPos === 'above') {
-    rows.push(dotOutsideLine(pos.hPos))
+  function toPixZ(z: number): number {
+    // Z increases upward; pixel Y increases downward — invert
+    return Math.round(margin + ((IMG_Z_MAX - z) / (IMG_Z_MAX - IMG_Z_MIN)) * (height - 2 * margin))
   }
 
-  rows.push(BORDER_ROW)
-
-  for (let r = 0; r <= 2; r++) {
-    if (pos.inZone && pos.row === r) {
-      rows.push(innerRow(pos.col))
-    } else if (!pos.inZone && typeof pos.vPos === 'number' && pos.vPos === r) {
-      // vPos is a number only when hPos is 'left' or 'right'
-      rows.push(innerRow(pos.hPos as 'left' | 'right'))
-    } else {
-      rows.push(EMPTY_ROW)
+  function setPixel(x: number, y: number, v: number): void {
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      pixels[y * width + x] = v
     }
   }
 
-  rows.push(BORDER_ROW)
-
-  if (!pos.inZone && pos.vPos === 'below') {
-    rows.push(dotOutsideLine(pos.hPos))
+  // Draw strike zone border (2 px thick)
+  const zx0 = toPixX(ZONE_LEFT),  zx1 = toPixX(ZONE_RIGHT)
+  const zy0 = toPixZ(szTop),       zy1 = toPixZ(szBot)
+  for (let t = 0; t < 2; t++) {
+    for (let x = zx0; x <= zx1; x++) {
+      setPixel(x, zy0 + t, 15)
+      setPixel(x, zy1 - t, 15)
+    }
+    for (let y = zy0; y <= zy1; y++) {
+      setPixel(zx0 + t, y, 15)
+      setPixel(zx1 - t, y, 15)
+    }
   }
 
-  return rows
+  // Draw ball as a filled circle
+  const bx = toPixX(pX)
+  const bz = toPixZ(pZ)
+  const r  = Math.max(4, Math.round(Math.min(width, height) * 0.07))
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy <= r * r) {
+        setPixel(bx + dx, bz + dy, 15)
+      }
+    }
+  }
+
+  return pixels
 }

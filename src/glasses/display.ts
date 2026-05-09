@@ -1,10 +1,6 @@
 import type { Game, AtBat, Pitch, MatchupStats } from '../lib/types'
 import { formatPitchType } from '../data/pitch-types'
-import { getDotPosition, renderZoneGrid } from './zone'
 
-const GRID_COLS = 11
-
-const DIVIDER = '━'.repeat(38)
 const CHARS_PER_LINE = 38
 
 function center(text: string): string {
@@ -54,15 +50,27 @@ export function renderHeader(game: Game, atBat: AtBat | null): string {
   return center(`${score} | ${inning} | ${count}`)
 }
 
-function buildDetailLines(
+// Returns the two-line pitch-view header: score/inning + batter/pitcher.
+export function renderPitchHeader(game: Game, atBat: AtBat): string {
+  const scoreLine = renderHeader(game, atBat)
+  const matchup = `B: ${atBat.batterLastName} [${atBat.batterHand}]  P: ${atBat.pitcherLastName} [${atBat.pitcherHand}] ${atBat.pitchCount}p`
+  return `${scoreLine}\n${matchup}`
+}
+
+// Pitch info text rendered in the right container (no zone grid — that's an image container).
+export function renderPitchInfo(
+  atBat: AtBat,
   pitch: Pitch,
   stats: MatchupStats | null,
-  batterLast: string,
-  pitcherLast: string
-): string[] {
+  pitchIndex: number | null,
+  totalPitches: number
+): string {
   const horizArrow = pitch.breakHorizontal < 0 ? '←' : '→'
   const horizAbs = Math.abs(Math.round(pitch.breakHorizontal))
-  const items = [
+  const zoneLabel = pitchIndex !== null ? `Pitch ${pitchIndex} / ${totalPitches}` : "Catcher's view"
+
+  const lines = [
+    zoneLabel,
     formatPitchType(pitch.pitchCode, pitch.pitchDescription),
     `${Math.round(pitch.endSpeed)} mph`,
     pitch.result,
@@ -70,105 +78,44 @@ function buildDetailLines(
     `Drop ↓${Math.round(pitch.breakVertical)}"`,
     `Move ${horizArrow}${horizAbs}"`,
     `${Math.round(pitch.startSpeed)}→${Math.round(pitch.endSpeed)}`,
-    '',
   ]
+
   if (stats) {
-    items.push(`${batterLast} vs ${pitcherLast}`)
-    items.push(`${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`)
-  }
-  return items
-}
-
-function buildTwoColumnLines(
-  gridRows: string[],
-  detailItems: string[],
-  zoneLabel: string,
-  pitchType: string
-): string[] {
-  const COL_GAP = '         '
-  const lines: string[] = []
-
-  lines.push(`${zoneLabel}${COL_GAP}${pitchType}`)
-
-  const extraAbove = gridRows.length === 6 && !gridRows[0].startsWith('+')
-  const startGridIdx = extraAbove ? 1 : 0
-
-  if (extraAbove) {
-    lines.push(`${gridRows[0]}${COL_GAP}${detailItems[1] ?? ''}`)
+    lines.push('')
+    lines.push(`${atBat.batterLastName} vs ${atBat.pitcherLastName}`)
+    lines.push(`${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`)
   }
 
-  const gridBody = gridRows.slice(startGridIdx)
-  const detailStart = extraAbove ? 2 : 1
-
-  gridBody.forEach((row, i) => {
-    const detail = detailItems[detailStart + i] ?? ''
-    lines.push(`${row}${COL_GAP}${detail}`)
-  })
-
-  const afterGrid = detailStart + gridBody.length
-  for (let i = afterGrid; i < detailItems.length; i++) {
-    lines.push(`${' '.repeat(GRID_COLS)}${COL_GAP}${detailItems[i]}`)
-  }
-
-  return lines
-}
-
-export function renderPitchView(
-  atBat: AtBat,
-  pitch: Pitch,
-  stats: MatchupStats | null,
-  pitchIndex: number | null,
-  totalPitches: number
-): string {
-  const lines: string[] = []
-
-  const batterLabel = `B: ${atBat.batterLastName} [${atBat.batterHand}]`
-  const pitcherLabel = `P: ${atBat.pitcherLastName} [${atBat.pitcherHand}] ${atBat.pitchCount}p`
-  lines.push(center(`${batterLabel}   ${pitcherLabel}`))
-
-  const zoneLabel = pitchIndex !== null
-    ? `Pitch ${pitchIndex} / ${totalPitches}`
-    : "Catcher's view"
-
-  const dotPos = getDotPosition(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot)
-  const gridRows = renderZoneGrid(dotPos)
-  const detailItems = buildDetailLines(pitch, stats, atBat.batterLastName, atBat.pitcherLastName)
-
-  const twoColLines = buildTwoColumnLines(gridRows, detailItems, zoneLabel, detailItems[0])
-  lines.push(...twoColLines)
-
-  lines.push(center('double-tap: game list'))
+  lines.push('')
+  lines.push('double-tap: game list')
 
   return lines.join('\n')
 }
 
-export function renderContactView(
+// Contact info text for the right container (same image zone shows ball location).
+export function renderContactInfo(
   atBat: AtBat,
   pitch: Pitch,
   stats: MatchupStats | null
 ): string {
-  const lines: string[] = []
+  const lines = [
+    "Catcher's view",
+    `⚾ ${pitch.contactResult ?? 'IN PLAY'}`,
+    '',
+  ]
 
-  const batterLabel = `B: ${atBat.batterLastName} [${atBat.batterHand}]`
-  const pitcherLabel = `P: ${atBat.pitcherLastName} [${atBat.pitcherHand}] ${atBat.pitchCount}p`
-  lines.push(center(`${batterLabel}   ${pitcherLabel}`))
-  lines.push(center(`⚾ ${pitch.contactResult ?? 'IN PLAY'}`))
-  lines.push('')
-
-  if (pitch.exitVelocity !== undefined) {
-    lines.push(`Exit Velocity   ${Math.round(pitch.exitVelocity)} mph`)
-  }
-  if (pitch.launchAngle !== undefined) {
-    lines.push(`Launch Angle    ${Math.round(pitch.launchAngle)}°`)
-  }
-  if (pitch.hitDistance !== undefined) {
-    lines.push(`Distance        ${Math.round(pitch.hitDistance)} ft`)
-  }
+  if (pitch.exitVelocity !== undefined) lines.push(`Exit  ${Math.round(pitch.exitVelocity)} mph`)
+  if (pitch.launchAngle !== undefined)  lines.push(`Angle ${Math.round(pitch.launchAngle)}°`)
+  if (pitch.hitDistance !== undefined)  lines.push(`Dist  ${Math.round(pitch.hitDistance)} ft`)
 
   if (stats) {
-    lines.push(center(`${atBat.batterLastName} vs ${atBat.pitcherLastName}: ${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`))
+    lines.push('')
+    lines.push(`${atBat.batterLastName} vs ${atBat.pitcherLastName}`)
+    lines.push(`${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`)
   }
-  lines.push(center('double-tap: game list'))
+
+  lines.push('')
+  lines.push('double-tap: game list')
 
   return lines.join('\n')
 }

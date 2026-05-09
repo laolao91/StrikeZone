@@ -2,7 +2,9 @@ import {
   waitForEvenAppBridge,
   CreateStartUpPageContainer,
   TextContainerProperty,
+  ImageContainerProperty,
   RebuildPageContainer,
+  TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk'
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { initStorage } from './lib/storage'
@@ -23,168 +25,212 @@ import {
 } from './glasses/game-state'
 import {
   renderHeader,
-  renderPitchView,
-  renderContactView,
+  renderPitchHeader,
+  renderPitchInfo,
+  renderContactInfo,
   renderGameList,
   renderStateScreen,
 } from './glasses/display'
+import { renderZoneImageData } from './glasses/zone'
 import { setupInput } from './glasses/input'
 import { initSettingsPage } from './settings/settings-mount'
 
-const HEADER_ID = 1
-const HEADER_NAME = 'hdr'
-const BODY_ID = 2
-const BODY_NAME = 'body'
+// ── Container IDs ────────────────────────────────────────────────────────────
+
+// Standard layout (game list, loading, error states):
+//   HDR (full-width title) + BODY (full-width scrollable body, event capture)
+const HDR_ID   = 1,  HDR_NAME   = 'hdr'
+const BODY_ID  = 2,  BODY_NAME  = 'body'
+
+// Pitch layout (live pitch / contact views):
+//   HDR2 (two-line header: score + batter/pitcher) + ZONE (image) + INFO (pitch details, event capture)
+const HDR2_ID  = 10, HDR2_NAME  = 'hdr2'
+const ZONE_ID  = 11, ZONE_NAME  = 'zone'
+const INFO_ID  = 12, INFO_NAME  = 'info'
+
+// Zone image dimensions (must stay within SDK limits: width 20–288, height 20–144)
+const ZONE_W   = 128
+const ZONE_H   = 128
+
+// Vertical start of the zone/info area (pixels below the top of screen)
+const PITCH_HEADER_H = 36  // header tall enough for 2 lines
 
 let bridge: EvenAppBridge | null = null
 
-async function createInitialPage(header: string, body: string): Promise<void> {
-  if (!bridge) return
-  await bridge.createStartUpPageContainer(
-    new CreateStartUpPageContainer({
-      containerTotalNum: 2,
-      textObject: [
-        new TextContainerProperty({
-          xPosition: 0, yPosition: 0, width: 576, height: 28,
-          borderWidth: 0, borderColor: 0, borderRadius: 0,
-          paddingLength: 4,
-          containerID: HEADER_ID, containerName: HEADER_NAME,
-          content: header, isEventCapture: 0,
-        }),
-        new TextContainerProperty({
-          xPosition: 0, yPosition: 28, width: 576, height: 260,
-          borderWidth: 0, borderColor: 0, borderRadius: 0,
-          paddingLength: 4,
-          containerID: BODY_ID, containerName: BODY_NAME,
-          content: body, isEventCapture: 1,
-        }),
-      ],
-    })
-  )
+// Track which layout is currently rendered so we can skip full rebuilds.
+type LayoutMode = 'none' | 'standard' | 'pitch'
+let currentLayout: LayoutMode = 'none'
+
+// ── Layout builders ──────────────────────────────────────────────────────────
+
+function makeStandardTextProps(header: string, body: string): TextContainerProperty[] {
+  return [
+    new TextContainerProperty({
+      xPosition: 0, yPosition: 0, width: 576, height: 28,
+      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+      containerID: HDR_ID, containerName: HDR_NAME,
+      content: header, isEventCapture: 0,
+    }),
+    new TextContainerProperty({
+      xPosition: 0, yPosition: 28, width: 576, height: 260,
+      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+      containerID: BODY_ID, containerName: BODY_NAME,
+      content: body, isEventCapture: 1,
+    }),
+  ]
 }
 
-async function rebuildPage(header: string, body: string): Promise<void> {
-  if (!bridge) return
-  await bridge.rebuildPageContainer(
-    new RebuildPageContainer({
-      containerTotalNum: 2,
-      textObject: [
-        new TextContainerProperty({
-          xPosition: 0, yPosition: 0, width: 576, height: 28,
-          borderWidth: 0, borderColor: 0, borderRadius: 0,
-          paddingLength: 4,
-          containerID: HEADER_ID, containerName: HEADER_NAME,
-          content: header, isEventCapture: 0,
-        }),
-        new TextContainerProperty({
-          xPosition: 0, yPosition: 28, width: 576, height: 260,
-          borderWidth: 0, borderColor: 0, borderRadius: 0,
-          paddingLength: 4,
-          containerID: BODY_ID, containerName: BODY_NAME,
-          content: body, isEventCapture: 1,
-        }),
-      ],
-    })
-  )
+function makePitchTextProps(header: string, info: string): TextContainerProperty[] {
+  return [
+    new TextContainerProperty({
+      xPosition: 0, yPosition: 0, width: 576, height: PITCH_HEADER_H,
+      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+      containerID: HDR2_ID, containerName: HDR2_NAME,
+      content: header, isEventCapture: 0,
+    }),
+    new TextContainerProperty({
+      xPosition: ZONE_W + 8, yPosition: PITCH_HEADER_H,
+      width: 576 - ZONE_W - 8, height: 288 - PITCH_HEADER_H,
+      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+      containerID: INFO_ID, containerName: INFO_NAME,
+      content: info, isEventCapture: 1,
+    }),
+  ]
 }
 
-function buildDisplay(): { header: string; body: string } {
+async function renderStandard(header: string, body: string): Promise<void> {
+  if (!bridge) return
+
+  if (currentLayout === 'standard') {
+    await bridge.textContainerUpgrade(new TextContainerUpgrade({
+      containerID: HDR_ID, containerName: HDR_NAME,
+      content: header, contentOffset: 0, contentLength: 0,
+    }))
+    await bridge.textContainerUpgrade(new TextContainerUpgrade({
+      containerID: BODY_ID, containerName: BODY_NAME,
+      content: body, contentOffset: 0, contentLength: 0,
+    }))
+    return
+  }
+
+  currentLayout = 'standard'
+  await bridge.rebuildPageContainer(new RebuildPageContainer({
+    containerTotalNum: 2,
+    textObject: makeStandardTextProps(header, body),
+  }))
+}
+
+async function renderPitch(header: string, info: string, imageData: number[]): Promise<void> {
+  if (!bridge) return
+
+  if (currentLayout !== 'pitch') {
+    currentLayout = 'pitch'
+    await bridge.rebuildPageContainer(new RebuildPageContainer({
+      containerTotalNum: 3,
+      textObject: makePitchTextProps(header, info),
+      imageObject: [
+        new ImageContainerProperty({
+          xPosition: 0, yPosition: PITCH_HEADER_H,
+          width: ZONE_W, height: ZONE_H,
+          containerID: ZONE_ID, containerName: ZONE_NAME,
+        }),
+      ],
+    }))
+  } else {
+    await bridge.textContainerUpgrade(new TextContainerUpgrade({
+      containerID: HDR2_ID, containerName: HDR2_NAME,
+      content: header, contentOffset: 0, contentLength: 0,
+    }))
+    await bridge.textContainerUpgrade(new TextContainerUpgrade({
+      containerID: INFO_ID, containerName: INFO_NAME,
+      content: info, contentOffset: 0, contentLength: 0,
+    }))
+  }
+
+  await bridge.updateImageRawData({
+    containerID: ZONE_ID, containerName: ZONE_NAME, imageData,
+  })
+}
+
+// ── Display logic ────────────────────────────────────────────────────────────
+
+async function refreshDisplay(): Promise<void> {
+  if (!bridge) return
   const s = getState()
 
+  // ── Game list ──────────────────────────────────────────────────────────────
   if (s.mode === 'game-list') {
-    return {
-      header: 'StrikeZone',
-      body: renderGameList(s.games, s.gameListIndex, s.gameListViewport),
-    }
+    await renderStandard('StrikeZone', renderGameList(s.games, s.gameListIndex, s.gameListViewport))
+    return
   }
 
+  // ── Loading / error ────────────────────────────────────────────────────────
   if (s.mode === 'loading') {
-    return {
-      header: 'StrikeZone',
-      body: renderStateScreen('loading'),
-    }
+    await renderStandard('StrikeZone', renderStateScreen('loading'))
+    return
   }
-
   if (s.mode === 'error') {
-    return {
-      header: 'StrikeZone',
-      body: renderStateScreen('error'),
-    }
+    await renderStandard('StrikeZone', renderStateScreen('error'))
+    return
   }
 
-  // pitch-view mode
+  // ── Pitch-view mode ────────────────────────────────────────────────────────
   const game = s.game
-
   if (!game) {
-    return {
-      header: 'StrikeZone',
-      body: renderStateScreen('no-game'),
-    }
+    await renderStandard('StrikeZone', renderStateScreen('no-game'))
+    return
   }
 
   if (game.gameState === 'Final') {
-    return {
-      header: renderHeader(game, null),
-      body: renderStateScreen('final', game),
-    }
+    await renderStandard(renderHeader(game, null), renderStateScreen('final', game))
+    return
   }
-
   if (game.gameState === 'Delayed') {
-    return {
-      header: renderHeader(game, null),
-      body: renderStateScreen('delayed', game),
-    }
+    await renderStandard(renderHeader(game, null), renderStateScreen('delayed', game))
+    return
   }
-
   if (game.gameState === 'Preview') {
-    return {
-      header: renderHeader(game, null),
-      body: renderStateScreen('starting-soon', game),
-    }
+    await renderStandard(renderHeader(game, null), renderStateScreen('starting-soon', game))
+    return
   }
 
   const atBat = s.atBat
   if (!atBat) {
-    return {
-      header: renderHeader(game, null),
-      body: renderStateScreen('loading'),
-    }
+    await renderStandard(renderHeader(game, null), renderStateScreen('loading'))
+    return
   }
 
   const pitch = currentPitch()
   if (!pitch) {
-    return {
-      header: renderHeader(game, atBat),
-      body: renderStateScreen('loading'),
-    }
+    await renderStandard(renderHeader(game, atBat), renderStateScreen('loading'))
+    return
   }
 
   const total = atBat.pitches.length
   const pitchIndex = s.pitchHistoryIndex !== null ? s.pitchHistoryIndex + 1 : null
+  const header = renderPitchHeader(game, atBat)
+  const imageData = renderZoneImageData(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
 
   if (pitch.isContact) {
-    return {
-      header: renderHeader(game, atBat),
-      body: renderContactView(atBat, pitch, s.matchupStats),
-    }
-  }
-
-  return {
-    header: renderHeader(game, atBat),
-    body: renderPitchView(atBat, pitch, s.matchupStats, pitchIndex, total),
+    await renderPitch(header, renderContactInfo(atBat, pitch, s.matchupStats), imageData)
+  } else {
+    await renderPitch(header, renderPitchInfo(atBat, pitch, s.matchupStats, pitchIndex, total), imageData)
   }
 }
+
+// ── Startup ──────────────────────────────────────────────────────────────────
 
 async function startGlassesMode(b: EvenAppBridge): Promise<void> {
   bridge = b
   initStorage(b)
 
-  await createInitialPage('StrikeZone', renderStateScreen('loading'))
+  currentLayout = 'standard'
+  await b.createStartUpPageContainer(new CreateStartUpPageContainer({
+    containerTotalNum: 2,
+    textObject: makeStandardTextProps('StrikeZone', renderStateScreen('loading')),
+  }))
 
-  onUpdate(async () => {
-    const { header, body } = buildDisplay()
-    await rebuildPage(header, body)
-  })
+  onUpdate(() => { refreshDisplay() })
 
   setupInput(b, {
     onTap: () => {
@@ -198,50 +244,33 @@ async function startGlassesMode(b: EvenAppBridge): Promise<void> {
     },
 
     onDoubleTap: () => {
-      const s = getState()
-      if (s.mode === 'pitch-view') {
-        openGameList()
-      }
+      if (getState().mode === 'pitch-view') openGameList()
     },
 
     onScrollUp: () => {
       const s = getState()
-      if (s.mode === 'game-list') {
-        scrollGameList('up')
-      } else if (s.mode === 'pitch-view') {
-        prevPitch()
-      }
+      if (s.mode === 'game-list') scrollGameList('up')
+      else if (s.mode === 'pitch-view') prevPitch()
     },
 
     onScrollDown: () => {
       const s = getState()
-      if (s.mode === 'game-list') {
-        scrollGameList('down')
-      } else if (s.mode === 'pitch-view') {
-        goLive()
-      }
+      if (s.mode === 'game-list') scrollGameList('down')
+      else if (s.mode === 'pitch-view') goLive()
     },
 
-    onForegroundEnter: () => {
-      init().then(() => startAutoRefresh())
-    },
-
-    onForegroundExit: () => {
-      stopAutoRefresh()
-    },
+    onForegroundEnter: () => { init().then(() => startAutoRefresh()) },
+    onForegroundExit:  () => { stopAutoRefresh() },
   })
 
   await init()
   startAutoRefresh()
 
-  window.addEventListener('strikezone:sync', () => {
-    init()
-  })
-
-  window.addEventListener('strikezone:refresh', () => {
-    refresh()
-  })
+  window.addEventListener('strikezone:sync', () => { init() })
+  window.addEventListener('strikezone:refresh', () => { refresh() })
 }
+
+// ── Entry point ───────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   try {
@@ -255,7 +284,7 @@ async function main(): Promise<void> {
       const { makeDevSchedule, nextReplayFrame } = await import('./dev/replay-fixtures')
       setFetchOverrides(
         (_date) => Promise.resolve(makeDevSchedule()),
-        (_pk) => Promise.resolve(nextReplayFrame()),
+        (_pk)   => Promise.resolve(nextReplayFrame()),
       )
     }
 

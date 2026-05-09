@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getDotPosition, renderZoneGrid } from './zone'
+import { getDotPosition, renderZoneImageData } from './zone'
 
 const SZ_TOP = 3.5
 const SZ_BOT = 1.5
@@ -41,36 +41,30 @@ describe('getDotPosition', () => {
   })
 })
 
-describe('renderZoneGrid', () => {
-  it('renders 5 rows for in-zone pitch', () => {
-    const pos = getDotPosition(0, 2.5, SZ_TOP, SZ_BOT)
-    const rows = renderZoneGrid(pos)
-    expect(rows).toHaveLength(5)
+describe('renderZoneImageData', () => {
+  const W = 128, H = 128
+
+  it('returns width × height pixels', () => {
+    const data = renderZoneImageData(0, 2.5, SZ_TOP, SZ_BOT, W, H)
+    expect(data).toHaveLength(W * H)
   })
 
-  it('places dot in center of top row for zone (0,1)', () => {
-    const pos = getDotPosition(0, 3.3, SZ_TOP, SZ_BOT)
-    const rows = renderZoneGrid(pos)
-    expect(rows[1]).toBe('|    ●    |')
+  it('all pixels are in range 0–15', () => {
+    const data = renderZoneImageData(0, 2.5, SZ_TOP, SZ_BOT, W, H)
+    expect(data.every(v => v >= 0 && v <= 15)).toBe(true)
   })
 
-  it('places dot in bottom-right cell for zone (2,2)', () => {
-    const pos = getDotPosition(0.6, 1.7, SZ_TOP, SZ_BOT)
-    const rows = renderZoneGrid(pos)
-    expect(rows[3]).toBe('|       ● |')
+  it('has some white pixels (zone border + ball)', () => {
+    const data = renderZoneImageData(0, 2.5, SZ_TOP, SZ_BOT, W, H)
+    expect(data.some(v => v === 15)).toBe(true)
   })
 
-  it('renders 6 rows and adds dot below for low pitch', () => {
-    const pos = getDotPosition(0, 0.5, SZ_TOP, SZ_BOT)
-    const rows = renderZoneGrid(pos)
-    expect(rows).toHaveLength(6)
-    expect(rows[5]).toContain('●')
-  })
-
-  it('renders 6 rows and adds dot above for high pitch', () => {
-    const pos = getDotPosition(0, 4.5, SZ_TOP, SZ_BOT)
-    const rows = renderZoneGrid(pos)
-    expect(rows).toHaveLength(6)
-    expect(rows[0]).toContain('●')
+  it('ball pixel near expected position for center pitch', () => {
+    const data = renderZoneImageData(0, 2.5, SZ_TOP, SZ_BOT, W, H)
+    // Center pitch (pX=0, pZ=2.5) should map near the center of the image
+    const cx = Math.floor(W / 2)
+    const cy = Math.floor(H / 2)
+    const nearby = data.slice((cy - 5) * W + (cx - 5), (cy - 5) * W + (cx + 5))
+    expect(nearby.some(v => v === 15)).toBe(true)
   })
 })

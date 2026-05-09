@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   renderHeader,
-  renderPitchView,
-  renderContactView,
+  renderPitchInfo,
+  renderContactInfo,
   renderGameList,
   renderStateScreen,
 } from './display'
@@ -72,53 +72,42 @@ describe('renderHeader', () => {
   })
 })
 
-describe('renderPitchView', () => {
-  it('includes B: and P: labels with handedness', () => {
-    const body = renderPitchView(mockAtBat, mockPitch, mockStats, null, 1)
-    expect(body).toContain('B: Judge [R]')
-    expect(body).toContain('P: Sale [L]')
-  })
-
-  it('includes pitch count after pitcher name', () => {
-    const body = renderPitchView(mockAtBat, mockPitch, mockStats, null, 1)
-    expect(body).toContain('87p')
-  })
-
-  it('includes pitch type from format map', () => {
-    const body = renderPitchView(mockAtBat, mockPitch, mockStats, null, 1)
-    expect(body).toContain('4-Seam FF')
-  })
-
-  it('includes velocity, result, spin, break, velocity drop', () => {
-    const body = renderPitchView(mockAtBat, mockPitch, mockStats, null, 1)
-    expect(body).toContain('88 mph')
-    expect(body).toContain('Called Strike')
-    expect(body).toContain('2387 rpm')
-    expect(body).toContain('Drop')
-    expect(body).toContain('Move')
-    expect(body).toContain('96→88')
-  })
-
-  it('includes historical split in right column', () => {
-    const body = renderPitchView(mockAtBat, mockPitch, mockStats, null, 1)
-    expect(body).toContain('Judge vs Sale')
-    expect(body).toContain('.250')
-    expect(body).toContain('1 HR')
-    expect(body).toContain('12 AB')
+describe('renderPitchInfo', () => {
+  it('includes zone label', () => {
+    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
+    expect(info).toContain("Catcher's view")
   })
 
   it('shows Pitch N/M label when pitchIndex provided', () => {
-    const body = renderPitchView(mockAtBat, mockPitch, mockStats, 2, 5)
-    expect(body).toContain('Pitch 2 / 5')
+    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, 2, 5)
+    expect(info).toContain('Pitch 2 / 5')
   })
 
-  it('shows Catcher\'s view when pitchIndex is null (live)', () => {
-    const body = renderPitchView(mockAtBat, mockPitch, mockStats, null, 1)
-    expect(body).toContain("Catcher's view")
+  it('includes pitch type from format map', () => {
+    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
+    expect(info).toContain('4-Seam FF')
+  })
+
+  it('includes velocity, result, spin, break', () => {
+    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
+    expect(info).toContain('88 mph')
+    expect(info).toContain('Called Strike')
+    expect(info).toContain('2387 rpm')
+    expect(info).toContain('Drop')
+    expect(info).toContain('Move')
+    expect(info).toContain('96→88')
+  })
+
+  it('includes historical split', () => {
+    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
+    expect(info).toContain('Judge vs Sale')
+    expect(info).toContain('.250')
+    expect(info).toContain('1 HR')
+    expect(info).toContain('12 AB')
   })
 })
 
-describe('renderContactView', () => {
+describe('renderContactInfo', () => {
   const contactPitch: Pitch = {
     ...mockPitch,
     isContact: true,
@@ -129,20 +118,20 @@ describe('renderContactView', () => {
   }
 
   it('includes result label', () => {
-    const body = renderContactView(mockAtBat, contactPitch, mockStats)
-    expect(body).toContain('HOME RUN')
+    const info = renderContactInfo(mockAtBat, contactPitch, mockStats)
+    expect(info).toContain('HOME RUN')
   })
 
   it('includes exit velocity, launch angle, distance', () => {
-    const body = renderContactView(mockAtBat, contactPitch, mockStats)
-    expect(body).toContain('108 mph')
-    expect(body).toContain('32°')
-    expect(body).toContain('431 ft')
+    const info = renderContactInfo(mockAtBat, contactPitch, mockStats)
+    expect(info).toContain('108 mph')
+    expect(info).toContain('32°')
+    expect(info).toContain('431 ft')
   })
 
   it('includes historical split', () => {
-    const body = renderContactView(mockAtBat, contactPitch, mockStats)
-    expect(body).toContain('Judge vs Sale')
+    const info = renderContactInfo(mockAtBat, contactPitch, mockStats)
+    expect(info).toContain('Judge vs Sale')
   })
 })
 
