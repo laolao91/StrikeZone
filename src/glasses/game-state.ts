@@ -35,6 +35,7 @@ let state: AppState = {
 
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null
 let onStateChange: (() => void) | null = null
+let matchupKey = ''
 
 export function getState(): AppState {
   return state
@@ -89,10 +90,14 @@ export async function refresh(): Promise<void> {
       if (newMatchup) {
         state.matchupStats = null
         state.pitchHistoryIndex = null
+        const key = `${result.atBat.batterId}-${result.atBat.pitcherId}`
+        matchupKey = key
         fetchMatchupStats(result.atBat.batterId, result.atBat.pitcherId).then(
           (stats) => {
-            state.matchupStats = stats
-            notify()
+            if (matchupKey === key) {
+              state.matchupStats = stats
+              notify()
+            }
           }
         )
       }
