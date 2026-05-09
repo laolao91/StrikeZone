@@ -34,8 +34,24 @@ export function SettingsApp() {
     window.dispatchEvent(new CustomEvent('strikezone:sync'))
   }
 
+  function formatGameTime(isoString: string): string {
+    if (!isoString) return ''
+    try {
+      const d = new Date(isoString)
+      return d.toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
+      }) + ' ET'
+    } catch {
+      return ''
+    }
+  }
+
   function gameLabel(g: Game): string {
-    if (g.gameState === 'Preview') return `${g.awayTeam} vs ${g.homeTeam}`
+    if (g.gameState === 'Preview') {
+      const t = formatGameTime(g.startTime)
+      return t ? `${g.awayTeam} vs ${g.homeTeam}  ${t}` : `${g.awayTeam} vs ${g.homeTeam}`
+    }
+    if (g.gameState === 'Delayed') return `${g.awayTeam} ${g.awayScore}–${g.homeScore} ${g.homeTeam}  Delayed`
     if (g.gameState === 'Final') return `${g.awayTeam} ${g.awayScore}–${g.homeScore} ${g.homeTeam}  Final`
     return `${g.awayTeam} ${g.awayScore}–${g.homeScore} ${g.homeTeam}  ${g.inningHalf[0]}${g.inning}`
   }

@@ -113,9 +113,8 @@ function buildDisplay(): { header: string; body: string } {
 
   // pitch-view mode
   const game = s.game
-  const atBat = s.atBat
 
-  if (!game || !atBat) {
+  if (!game) {
     return {
       header: 'StrikeZone',
       body: renderStateScreen('no-game'),
@@ -140,6 +139,14 @@ function buildDisplay(): { header: string; body: string } {
     return {
       header: renderHeader(game, null),
       body: renderStateScreen('starting-soon', game),
+    }
+  }
+
+  const atBat = s.atBat
+  if (!atBat) {
+    return {
+      header: renderHeader(game, null),
+      body: renderStateScreen('loading'),
     }
   }
 

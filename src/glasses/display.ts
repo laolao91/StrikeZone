@@ -10,6 +10,18 @@ function center(text: string): string {
   return ' '.repeat(pad) + text
 }
 
+function formatStartTime(isoString: string): string {
+  if (!isoString) return ''
+  try {
+    const d = new Date(isoString)
+    return d.toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
+    }) + ' ET'
+  } catch {
+    return ''
+  }
+}
+
 export function renderHeader(game: Game, atBat: AtBat | null): string {
   if (game.gameState === 'Final') {
     return center(`${game.awayTeam} ${game.awayScore}-${game.homeScore} ${game.homeTeam}  Final`)
@@ -93,6 +105,7 @@ export function renderPitchView(
   if (stats) {
     lines.push(center(`${atBat.batterLastName} vs ${atBat.pitcherLastName}: ${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`))
   }
+  lines.push(center('double-tap: game list'))
 
   return lines.join('\n')
 }
@@ -125,6 +138,7 @@ export function renderContactView(
   if (stats) {
     lines.push(center(`${atBat.batterLastName} vs ${atBat.pitcherLastName}: ${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`))
   }
+  lines.push(center('double-tap: game list'))
 
   return lines.join('\n')
 }
@@ -132,13 +146,15 @@ export function renderContactView(
 export function renderGameList(games: Game[], selectedIndex: number): string {
   const lines: string[] = []
   lines.push(center('Select a Game'))
-  lines.push(DIVIDER)
 
   games.forEach((g, i) => {
     const selected = i === selectedIndex
     let label: string
     if (g.gameState === 'Preview') {
-      label = `${g.awayTeam} vs ${g.homeTeam}`
+      const t = formatStartTime(g.startTime)
+      label = t ? `${g.awayTeam} vs ${g.homeTeam}  ${t}` : `${g.awayTeam} vs ${g.homeTeam}`
+    } else if (g.gameState === 'Delayed') {
+      label = `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Delayed`
     } else if (g.gameState === 'Final') {
       label = `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Final`
     } else {
@@ -170,16 +186,26 @@ export function renderStateScreen(state: AppScreenState, game?: Game): string {
       lines.push(center('Tap to retry.'))
       break
     case 'starting-soon':
-      if (game) lines.push(center(`${game.awayTeam} vs ${game.homeTeam}`))
+      if (game) {
+        lines.push(center(`${game.awayTeam} vs ${game.homeTeam}`))
+        const t = formatStartTime(game.startTime)
+        if (t) lines.push(center(t))
+      }
       lines.push(center('Game Starting Soon'))
+      lines.push('')
+      lines.push(center('double-tap: game list'))
       break
     case 'delayed':
       if (game) lines.push(center(`${game.awayTeam} vs ${game.homeTeam}`))
       lines.push(center('Rain Delay'))
+      lines.push('')
+      lines.push(center('double-tap: game list'))
       break
     case 'final':
       if (game) lines.push(center(`${game.awayTeam} ${game.awayScore}-${game.homeScore} ${game.homeTeam}`))
       lines.push(center('Final'))
+      lines.push('')
+      lines.push(center('double-tap: game list'))
       break
   }
   return lines.join('\n')
