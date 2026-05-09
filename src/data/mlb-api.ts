@@ -151,7 +151,7 @@ export function parseMatchupStatsResponse(raw: any): MatchupStats | null {
 }
 
 export async function fetchSchedule(date: string): Promise<Game[]> {
-  const url = `${BASE}/api/v1/schedule?sportId=1&date=${date}`
+  const url = `${BASE}/api/v1/schedule?sportId=1&date=${date}&hydrate=team`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Schedule fetch failed: ${res.status}`)
   return parseScheduleResponse(await res.json())
