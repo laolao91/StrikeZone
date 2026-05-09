@@ -1,0 +1,35 @@
+{
+  "name": "strikezone",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "qr": "evenhub qr --http --port 5173",
+    "pack": "npm run build && evenhub pack app.json dist -o strikezone.ehpk"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "^0.0.10",
+    "even-toolkit": "^1.7.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "^0.1.12",
+    "@evenrealities/evenhub-simulator": "^0.7.2",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.1",
+    "vitest": "^2.0.0"
+  }
+}

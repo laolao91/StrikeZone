@@ -1,0 +1,20 @@
+{
+  "package_id": "com.strikezone.app",
+  "edition": "202605",
+  "name": "StrikeZone",
+  "version": "1.0.0",
+  "min_app_version": "0.1.0",
+  "min_sdk_version": "0.0.10",
+  "tagline": "Live MLB pitch data on your glasses",
+  "description": "See the strike zone and live pitch data for MLB games — the broadcast view you miss when you're at the park.",
+  "author": "StrikeZone",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Fetch live MLB game data from the MLB Stats API",
+      "whitelist": ["https://statsapi.mlb.com"]
+    }
+  ],
+  "supported_languages": ["en"]
+}
