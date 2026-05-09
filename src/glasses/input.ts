@@ -12,23 +12,12 @@ export interface InputCallbacks {
 
 const SCROLL_COOLDOWN_MS = 300
 
-function resolveEventType(
-  eventType: number | undefined | null
-): OsEventTypeList | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveEventType(eventType: any): OsEventTypeList | null {
   if (eventType === undefined || eventType === null) {
     return OsEventTypeList.CLICK_EVENT
   }
-  if (
-    eventType === OsEventTypeList.CLICK_EVENT ||
-    eventType === OsEventTypeList.SCROLL_TOP_EVENT ||
-    eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT ||
-    eventType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
-    eventType === OsEventTypeList.FOREGROUND_ENTER_EVENT ||
-    eventType === OsEventTypeList.FOREGROUND_EXIT_EVENT
-  ) {
-    return eventType
-  }
-  return null
+  return OsEventTypeList.fromJson(eventType) ?? null
 }
 
 export function setupInput(

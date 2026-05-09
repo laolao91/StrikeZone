@@ -5,7 +5,23 @@ import {
   fetchMatchupStats,
   todayDateString,
 } from '../data/mlb-api'
+import type { LiveFeedResult } from '../data/mlb-api'
 import { getSettings, saveSettings } from '../lib/storage'
+import { VIEWPORT_SIZE } from './display'
+
+type ScheduleFetchFn = (date: string) => Promise<Game[]>
+type LiveFeedFetchFn = (gamePk: number) => Promise<LiveFeedResult>
+
+let _fetchSchedule: ScheduleFetchFn = fetchSchedule
+let _fetchLiveFeed: LiveFeedFetchFn = fetchLiveFeed
+
+export function setFetchOverrides(
+  scheduleFn: ScheduleFetchFn,
+  liveFeedFn: LiveFeedFetchFn
+): void {
+  _fetchSchedule = scheduleFn
+  _fetchLiveFeed = liveFeedFn
+}
 
 export type AppMode = 'game-list' | 'pitch-view' | 'loading' | 'error'
 
@@ -13,6 +29,7 @@ export interface AppState {
   mode: AppMode;
   games: Game[];
   gameListIndex: number;
+  gameListViewport: number;
   selectedGamePk: number | null;
   game: Game | null;
   atBat: AtBat | null;
@@ -25,6 +42,7 @@ let state: AppState = {
   mode: 'loading',
   games: [],
   gameListIndex: 0,
+  gameListViewport: 0,
   selectedGamePk: null,
   game: null,
   atBat: null,
@@ -57,7 +75,7 @@ export async function init(): Promise<void> {
   state.selectedGamePk = settings.selectedGamePk
 
   try {
-    state.games = await fetchSchedule(todayDateString())
+    state.games = await _fetchSchedule(todayDateString())
   } catch {
     state.games = []
   }
@@ -67,6 +85,7 @@ export async function init(): Promise<void> {
   } else {
     state.mode = 'game-list'
     state.gameListIndex = 0
+    state.gameListViewport = 0
     notify()
   }
 }
@@ -74,7 +93,7 @@ export async function init(): Promise<void> {
 export async function refresh(): Promise<void> {
   if (!state.selectedGamePk) return
   try {
-    const result = await fetchLiveFeed(state.selectedGamePk)
+    const result = await _fetchLiveFeed(state.selectedGamePk)
     const prevAtBat = state.atBat
 
     state.game = result.game
@@ -136,10 +155,23 @@ export function currentPitch(): Pitch | null {
 
 export function scrollGameList(direction: 'up' | 'down'): void {
   if (state.games.length === 0) return
-  if (direction === 'up') {
-    state.gameListIndex = (state.gameListIndex - 1 + state.games.length) % state.games.length
+  const n = state.games.length
+  if (direction === 'down') {
+    const next = (state.gameListIndex + 1) % n
+    state.gameListIndex = next
+    if (next === 0) {
+      state.gameListViewport = 0
+    } else if (next >= state.gameListViewport + VIEWPORT_SIZE) {
+      state.gameListViewport = next - VIEWPORT_SIZE + 1
+    }
   } else {
-    state.gameListIndex = (state.gameListIndex + 1) % state.games.length
+    const prev = (state.gameListIndex - 1 + n) % n
+    state.gameListIndex = prev
+    if (prev === n - 1) {
+      state.gameListViewport = Math.max(0, n - VIEWPORT_SIZE)
+    } else if (prev < state.gameListViewport) {
+      state.gameListViewport = prev
+    }
   }
   notify()
 }
@@ -154,8 +186,13 @@ export async function selectGame(gamePk: number): Promise<void> {
 
 export function openGameList(): void {
   state.mode = 'game-list'
-  state.gameListIndex = state.games.findIndex(g => g.gamePk === state.selectedGamePk)
-  if (state.gameListIndex < 0) state.gameListIndex = 0
+  const idx = state.games.findIndex(g => g.gamePk === state.selectedGamePk)
+  state.gameListIndex = idx >= 0 ? idx : 0
+  // Keep cursor visible: adjust viewport if cursor is outside current window
+  if (state.gameListIndex < state.gameListViewport ||
+      state.gameListIndex >= state.gameListViewport + VIEWPORT_SIZE) {
+    state.gameListViewport = Math.max(0, state.gameListIndex - Math.floor(VIEWPORT_SIZE / 2))
+  }
   notify()
 }
 

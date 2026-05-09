@@ -12,20 +12,24 @@ import { formatPitchType } from '../data/pitch-types'
 function formatGameTime(isoString: string): string {
   if (!isoString) return ''
   try {
-    return new Date(isoString).toLocaleTimeString('en-US', {
-      hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
-    }) + ' ET'
+    return new Date(isoString).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   } catch { return '' }
 }
 
-function gameListLabel(g: Game): string {
-  if (g.gameState === 'Preview') {
-    const t = formatGameTime(g.startTime)
-    return t ? `${g.awayTeam} vs ${g.homeTeam}  ${t}` : `${g.awayTeam} vs ${g.homeTeam}`
-  }
-  if (g.gameState === 'Delayed') return `${g.awayTeam} ${g.awayScore}–${g.homeScore} ${g.homeTeam}  Delayed`
-  if (g.gameState === 'Final') return `${g.awayTeam} ${g.awayScore}–${g.homeScore} ${g.homeTeam}  Final`
-  return `${g.awayTeam} ${g.awayScore}–${g.homeScore} ${g.homeTeam}  ${g.inningHalf[0]}${g.inning}`
+function GameListRowContent({ g }: { g: Game }) {
+  const matchup = g.gameState === 'Preview'
+    ? `${g.awayTeam} vs ${g.homeTeam}`
+    : `${g.awayTeam} ${g.awayScore}–${g.homeScore} ${g.homeTeam}`
+  const detail = g.gameState === 'Preview' ? formatGameTime(g.startTime)
+    : g.gameState === 'Delayed' ? 'Delayed'
+    : g.gameState === 'Final' ? 'Final'
+    : `${g.inningHalf[0]}${g.inning}`
+  return (
+    <div className="flex items-center justify-between w-full">
+      <span>{matchup}</span>
+      {detail && <span className="text-text-dim ml-3">{detail}</span>}
+    </div>
+  )
 }
 
 // ── sub-components ────────────────────────────────────────────
@@ -76,6 +80,7 @@ export function SettingsApp() {
   const [liveError, setLiveError] = useState(false)
 
   const matchupKeyRef = useRef('')
+  const pitchCountRef = useRef(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load schedule + saved selection on mount
@@ -99,6 +104,7 @@ export function SettingsApp() {
 
   // Poll live feed when game is selected
   useEffect(() => {
+    pitchCountRef.current = 0
     if (!selectedPk) {
       setLiveFeed(null)
       setMatchupStats(null)
@@ -120,6 +126,11 @@ export function SettingsApp() {
               if (matchupKeyRef.current === key) setMatchupStats(stats)
             })
           }
+        }
+        const newCount = result.atBat?.pitches.length ?? 0
+        if (newCount > pitchCountRef.current) {
+          pitchCountRef.current = newCount
+          window.dispatchEvent(new CustomEvent('strikezone:refresh'))
         }
         setLiveFeed(result)
         setLiveError(false)
@@ -235,13 +246,13 @@ export function SettingsApp() {
           <button
             key={g.gamePk}
             onClick={() => handleSelect(g.gamePk)}
-            className={`w-full text-left py-3 px-4 mb-2 rounded-lg border text-base ${
+            className={`w-full py-3 px-4 mb-2 rounded-lg border text-base ${
               selectedPk === g.gamePk
                 ? 'border-accent bg-accent/10 font-medium'
                 : 'border-border bg-surface'
             }`}
           >
-            {gameListLabel(g)}
+            <GameListRowContent g={g} />
           </button>
         ))}
       </div>

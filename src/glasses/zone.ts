@@ -37,17 +37,17 @@ export function getDotPosition(
 
 function dotForRow(pos: DotPosition, row: 0 | 1 | 2): string {
   if (pos.inZone) {
-    return pos.row === row ? pos.col === 0 ? '│●│ │ │'
-                           : pos.col === 1 ? '│ │●│ │'
-                           : '│ │ │●│'
-                          : '│ │ │ │'
+    return pos.row === row ? pos.col === 0 ? '|●| | |'
+                           : pos.col === 1 ? '| |●| |'
+                           : '| | |●|'
+                          : '| | | |'
   }
   const vPos = pos.vPos
   if (typeof vPos === 'number' && vPos === row) {
-    if (pos.hPos === 'left')  return '●│ │ │ │'
-    if (pos.hPos === 'right') return '│ │ │ │●'
+    if (pos.hPos === 'left')  return '●| | | |'
+    if (pos.hPos === 'right') return '| | | |●'
   }
-  return '│ │ │ │'
+  return '| | | |'
 }
 
 function dotLineBelow(hPos: 'left' | 'right' | 0 | 1 | 2): string {
@@ -65,13 +65,13 @@ export function renderZoneGrid(pos: DotPosition): string[] {
     rows.push(dotLineBelow(pos.hPos))
   }
 
-  rows.push('┌─┬─┬─┐')
+  rows.push('+-+-+-+')
   rows.push(dotForRow(pos, 0))
-  rows.push('├─┼─┼─┤')
+  rows.push('+-+-+-+')
   rows.push(dotForRow(pos, 1))
-  rows.push('├─┼─┼─┤')
+  rows.push('+-+-+-+')
   rows.push(dotForRow(pos, 2))
-  rows.push('└─┴─┴─┘')
+  rows.push('+-+-+-+')
 
   if (!pos.inZone && pos.vPos === 'below') {
     rows.push(dotLineBelow(pos.hPos))

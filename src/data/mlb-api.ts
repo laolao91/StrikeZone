@@ -75,7 +75,7 @@ export function parseLiveFeedResponse(raw: any): LiveFeedResult {
     homeTeam: gameData.teams.home.abbreviation,
     awayScore: linescore.teams.away.runs ?? 0,
     homeScore: linescore.teams.home.runs ?? 0,
-    inning: linescore.currentInning,
+    inning: linescore.currentInning ?? 1,
     inningHalf: linescore.inningHalf === 'Bottom' ? 'Bot' : 'Top',
     gameState,
     startTime: '',

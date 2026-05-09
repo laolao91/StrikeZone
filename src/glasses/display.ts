@@ -2,6 +2,8 @@ import type { Game, AtBat, Pitch, MatchupStats } from '../lib/types'
 import { formatPitchType } from '../data/pitch-types'
 import { getDotPosition, renderZoneGrid } from './zone'
 
+const GRID_COLS = 7
+
 const DIVIDER = '━'.repeat(38)
 const CHARS_PER_LINE = 38
 
@@ -10,21 +12,40 @@ function center(text: string): string {
   return ' '.repeat(pad) + text
 }
 
+export const VIEWPORT_SIZE = 8
+
 function formatStartTime(isoString: string): string {
   if (!isoString) return ''
   try {
-    const d = new Date(isoString)
-    return d.toLocaleTimeString('en-US', {
-      hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
-    }) + ' ET'
+    return new Date(isoString).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   } catch {
     return ''
   }
 }
 
+function gameLabel(g: Game): string {
+  if (g.gameState === 'Preview') {
+    const t = formatStartTime(g.startTime)
+    return t ? `${g.awayTeam} vs ${g.homeTeam}    ${t}` : `${g.awayTeam} vs ${g.homeTeam}`
+  }
+  if (g.gameState === 'Delayed') return `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Delayed`
+  if (g.gameState === 'Final')   return `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Final`
+  return `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  ${g.inningHalf[0]}${g.inning}`
+}
+
+function centeredWithCursor(label: string, selected: boolean): string {
+  const padded = center(label)
+  if (!selected) return padded
+  if (padded.startsWith(' ')) return '▶' + padded.slice(1)
+  return '▶' + padded
+}
+
 export function renderHeader(game: Game, atBat: AtBat | null): string {
   if (game.gameState === 'Final') {
     return center(`${game.awayTeam} ${game.awayScore}-${game.homeScore} ${game.homeTeam}  Final`)
+  }
+  if (game.gameState === 'Preview') {
+    return center(`${game.awayTeam} vs ${game.homeTeam}`)
   }
   const score = `${game.awayTeam} ${game.awayScore}-${game.homeScore} ${game.homeTeam}`
   const inning = `${game.inningHalf} ${game.inning}`
@@ -33,10 +54,15 @@ export function renderHeader(game: Game, atBat: AtBat | null): string {
   return center(`${score} | ${inning} | ${count}`)
 }
 
-function buildDetailLines(pitch: Pitch): string[] {
+function buildDetailLines(
+  pitch: Pitch,
+  stats: MatchupStats | null,
+  batterLast: string,
+  pitcherLast: string
+): string[] {
   const horizArrow = pitch.breakHorizontal < 0 ? '←' : '→'
   const horizAbs = Math.abs(Math.round(pitch.breakHorizontal))
-  return [
+  const items = [
     formatPitchType(pitch.pitchCode, pitch.pitchDescription),
     `${Math.round(pitch.endSpeed)} mph`,
     pitch.result,
@@ -44,7 +70,13 @@ function buildDetailLines(pitch: Pitch): string[] {
     `Drop ↓${Math.round(pitch.breakVertical)}"`,
     `Move ${horizArrow}${horizAbs}"`,
     `${Math.round(pitch.startSpeed)}→${Math.round(pitch.endSpeed)}`,
+    '',
   ]
+  if (stats) {
+    items.push(`${batterLast} vs ${pitcherLast}`)
+    items.push(`${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`)
+  }
+  return items
 }
 
 function buildTwoColumnLines(
@@ -58,7 +90,7 @@ function buildTwoColumnLines(
 
   lines.push(`${zoneLabel}${COL_GAP}${pitchType}`)
 
-  const extraAbove = gridRows.length === 8 && !gridRows[0].startsWith('┌')
+  const extraAbove = gridRows.length === 8 && !gridRows[0].startsWith('+')
   const startGridIdx = extraAbove ? 1 : 0
 
   if (extraAbove) {
@@ -72,6 +104,11 @@ function buildTwoColumnLines(
     const detail = detailItems[detailStart + i] ?? ''
     lines.push(`${row}${COL_GAP}${detail}`)
   })
+
+  const afterGrid = detailStart + gridBody.length
+  for (let i = afterGrid; i < detailItems.length; i++) {
+    lines.push(`${' '.repeat(GRID_COLS)}${COL_GAP}${detailItems[i]}`)
+  }
 
   return lines
 }
@@ -88,7 +125,6 @@ export function renderPitchView(
   const batterLabel = `B: ${atBat.batterLastName} [${atBat.batterHand}]`
   const pitcherLabel = `P: ${atBat.pitcherLastName} [${atBat.pitcherHand}] ${atBat.pitchCount}p`
   lines.push(center(`${batterLabel}   ${pitcherLabel}`))
-  lines.push(DIVIDER)
 
   const zoneLabel = pitchIndex !== null
     ? `Pitch ${pitchIndex} / ${totalPitches}`
@@ -96,15 +132,11 @@ export function renderPitchView(
 
   const dotPos = getDotPosition(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot)
   const gridRows = renderZoneGrid(dotPos)
-  const detailItems = buildDetailLines(pitch)
+  const detailItems = buildDetailLines(pitch, stats, atBat.batterLastName, atBat.pitcherLastName)
 
   const twoColLines = buildTwoColumnLines(gridRows, detailItems, zoneLabel, detailItems[0])
   lines.push(...twoColLines)
 
-  lines.push(DIVIDER)
-  if (stats) {
-    lines.push(center(`${atBat.batterLastName} vs ${atBat.pitcherLastName}: ${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`))
-  }
   lines.push(center('double-tap: game list'))
 
   return lines.join('\n')
@@ -120,7 +152,6 @@ export function renderContactView(
   const batterLabel = `B: ${atBat.batterLastName} [${atBat.batterHand}]`
   const pitcherLabel = `P: ${atBat.pitcherLastName} [${atBat.pitcherHand}] ${atBat.pitchCount}p`
   lines.push(center(`${batterLabel}   ${pitcherLabel}`))
-  lines.push(DIVIDER)
   lines.push(center(`⚾ ${pitch.contactResult ?? 'IN PLAY'}`))
   lines.push('')
 
@@ -134,7 +165,6 @@ export function renderContactView(
     lines.push(`Distance        ${Math.round(pitch.hitDistance)} ft`)
   }
 
-  lines.push(DIVIDER)
   if (stats) {
     lines.push(center(`${atBat.batterLastName} vs ${atBat.pitcherLastName}: ${stats.avg}  ${stats.hr} HR  ${stats.ab} AB`))
   }
@@ -143,27 +173,18 @@ export function renderContactView(
   return lines.join('\n')
 }
 
-export function renderGameList(games: Game[], selectedIndex: number): string {
+export function renderGameList(
+  games: Game[],
+  selectedIndex: number,
+  viewportStart: number = 0
+): string {
   const lines: string[] = []
   lines.push(center('Select a Game'))
 
-  games.forEach((g, i) => {
-    const selected = i === selectedIndex
-    let label: string
-    if (g.gameState === 'Preview') {
-      const t = formatStartTime(g.startTime)
-      label = t ? `${g.awayTeam} vs ${g.homeTeam}  ${t}` : `${g.awayTeam} vs ${g.homeTeam}`
-    } else if (g.gameState === 'Delayed') {
-      label = `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Delayed`
-    } else if (g.gameState === 'Final') {
-      label = `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Final`
-    } else {
-      label = `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  ${g.inningHalf[0]}${g.inning}`
-    }
-    lines.push(selected ? `▶ ${label}` : `  ${label}`)
+  games.slice(viewportStart, viewportStart + VIEWPORT_SIZE).forEach((g, i) => {
+    lines.push(centeredWithCursor(gameLabel(g), viewportStart + i === selectedIndex))
   })
 
-  lines.push(DIVIDER)
   lines.push(center('scroll: navigate  tap: select'))
   return lines.join('\n')
 }

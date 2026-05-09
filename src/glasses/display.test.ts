@@ -99,7 +99,7 @@ describe('renderPitchView', () => {
     expect(body).toContain('96→88')
   })
 
-  it('includes historical split at bottom', () => {
+  it('includes historical split in right column', () => {
     const body = renderPitchView(mockAtBat, mockPitch, mockStats, null, 1)
     expect(body).toContain('Judge vs Sale')
     expect(body).toContain('.250')

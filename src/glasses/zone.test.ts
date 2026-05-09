@@ -51,13 +51,13 @@ describe('renderZoneGrid', () => {
   it('places dot in center of top row for zone (0,1)', () => {
     const pos = getDotPosition(0, 3.3, SZ_TOP, SZ_BOT)
     const rows = renderZoneGrid(pos)
-    expect(rows[1]).toBe('│ │●│ │')
+    expect(rows[1]).toBe('| |●| |')
   })
 
   it('places dot in bottom-right cell for zone (2,2)', () => {
     const pos = getDotPosition(0.6, 1.7, SZ_TOP, SZ_BOT)
     const rows = renderZoneGrid(pos)
-    expect(rows[5]).toBe('│ │ │●│')
+    expect(rows[5]).toBe('| | |●|')
   })
 
   it('renders 8 rows and adds dot below for low pitch', () => {

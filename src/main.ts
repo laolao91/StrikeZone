@@ -19,6 +19,7 @@ import {
   getState,
   onUpdate,
   currentPitch,
+  setFetchOverrides,
 } from './glasses/game-state'
 import {
   renderHeader,
@@ -93,7 +94,7 @@ function buildDisplay(): { header: string; body: string } {
   if (s.mode === 'game-list') {
     return {
       header: 'StrikeZone',
-      body: renderGameList(s.games, s.gameListIndex),
+      body: renderGameList(s.games, s.gameListIndex, s.gameListViewport),
     }
   }
 
@@ -236,6 +237,10 @@ async function startGlassesMode(b: EvenAppBridge): Promise<void> {
   window.addEventListener('strikezone:sync', () => {
     init()
   })
+
+  window.addEventListener('strikezone:refresh', () => {
+    refresh()
+  })
 }
 
 async function main(): Promise<void> {
@@ -245,6 +250,14 @@ async function main(): Promise<void> {
       !!(window as any).webkit?.messageHandlers?.callHandler
 
     initSettingsPage()
+
+    if (new URLSearchParams(window.location.search).has('devReplay')) {
+      const { makeDevSchedule, nextReplayFrame } = await import('./dev/replay-fixtures')
+      setFetchOverrides(
+        (_date) => Promise.resolve(makeDevSchedule()),
+        (_pk) => Promise.resolve(nextReplayFrame()),
+      )
+    }
 
     if (hasFlutter) {
       const b = await waitForEvenAppBridge()
