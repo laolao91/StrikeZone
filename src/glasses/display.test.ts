@@ -3,6 +3,7 @@ import {
   renderHeader,
   renderPitchInfo,
   renderContactInfo,
+  renderSplitsInfo,
   renderGameList,
   renderStateScreen,
 } from './display'
@@ -63,6 +64,7 @@ describe('renderHeader', () => {
     expect(h).toContain('B:2')
     expect(h).toContain('S:1')
     expect(h).toContain('O:2')
+    expect(h).toContain('P:87')
   })
 
   it('shows Final label when game is over', () => {
@@ -74,36 +76,28 @@ describe('renderHeader', () => {
 
 describe('renderPitchInfo', () => {
   it('includes zone label', () => {
-    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
+    const info = renderPitchInfo(mockAtBat, mockPitch, null, 1)
     expect(info).toContain("Catcher's view")
   })
 
   it('shows Pitch N/M label when pitchIndex provided', () => {
-    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, 2, 5)
+    const info = renderPitchInfo(mockAtBat, mockPitch, 2, 5)
     expect(info).toContain('Pitch 2 / 5')
   })
 
   it('includes pitch type from format map', () => {
-    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
+    const info = renderPitchInfo(mockAtBat, mockPitch, null, 1)
     expect(info).toContain('4-Seam FF')
   })
 
   it('includes velocity, result, spin, break', () => {
-    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
+    const info = renderPitchInfo(mockAtBat, mockPitch, null, 1)
     expect(info).toContain('88 mph')
     expect(info).toContain('Called Strike')
     expect(info).toContain('2387 rpm')
     expect(info).toContain('Drop')
     expect(info).toContain('Move')
     expect(info).toContain('96→88')
-  })
-
-  it('includes historical split', () => {
-    const info = renderPitchInfo(mockAtBat, mockPitch, mockStats, null, 1)
-    expect(info).toContain('Judge vs Sale')
-    expect(info).toContain('.250')
-    expect(info).toContain('1 HR')
-    expect(info).toContain('12 AB')
   })
 })
 
@@ -118,20 +112,53 @@ describe('renderContactInfo', () => {
   }
 
   it('includes result label', () => {
-    const info = renderContactInfo(mockAtBat, contactPitch, mockStats)
+    const info = renderContactInfo(mockAtBat, contactPitch)
     expect(info).toContain('HOME RUN')
   })
 
   it('includes exit velocity, launch angle, distance', () => {
-    const info = renderContactInfo(mockAtBat, contactPitch, mockStats)
+    const info = renderContactInfo(mockAtBat, contactPitch)
     expect(info).toContain('108 mph')
     expect(info).toContain('32°')
     expect(info).toContain('431 ft')
   })
+})
 
-  it('includes historical split', () => {
-    const info = renderContactInfo(mockAtBat, contactPitch, mockStats)
-    expect(info).toContain('Judge vs Sale')
+describe('renderSplitsInfo', () => {
+  it('shows batter and pitcher lines even when stats are null', () => {
+    const splits = renderSplitsInfo(mockAtBat, mockGame, null)
+    expect(splits).toContain('B:')
+    expect(splits).toContain('Judge')
+    expect(splits).not.toContain('.000')
+  })
+
+  it('includes batter team prefix from inning half (Top → away bats)', () => {
+    // mockGame is Top inning, away=NYY, home=BOS → batter=NYY, pitcher=BOS
+    const splits = renderSplitsInfo(mockAtBat, mockGame, mockStats)
+    expect(splits).toContain('NYY B:')
+    expect(splits).toContain('Judge')
+    expect(splits).toContain('(R)')
+  })
+
+  it('includes pitcher team prefix from inning half (Top → home pitches)', () => {
+    const splits = renderSplitsInfo(mockAtBat, mockGame, mockStats)
+    expect(splits).toContain('BOS P:')
+    expect(splits).toContain('Sale')
+    expect(splits).toContain('(LHP)')
+  })
+
+  it('swaps teams in bottom half inning', () => {
+    const botGame = { ...mockGame, inningHalf: 'Bot' as const }
+    const splits = renderSplitsInfo(mockAtBat, botGame, mockStats)
+    expect(splits).toContain('BOS B:')
+    expect(splits).toContain('NYY P:')
+  })
+
+  it('includes stats when present', () => {
+    const splits = renderSplitsInfo(mockAtBat, mockGame, mockStats)
+    expect(splits).toContain('.250')
+    expect(splits).toContain('1 HR')
+    expect(splits).toContain('12 AB')
   })
 })
 

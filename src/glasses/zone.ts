@@ -2,10 +2,10 @@ const ZONE_LEFT  = -0.83
 const ZONE_RIGHT =  0.83
 
 // Fixed coordinate range for the image canvas (feet).
-// The zone is drawn within this range so out-of-zone pitches are still visible.
+// Wider than the zone so out-of-zone pitches still appear.
 const IMG_X_MIN = -1.5
 const IMG_X_MAX =  1.5
-const IMG_Z_MIN =  0.5
+const IMG_Z_MIN =  1.0   // raised floor so zone fills more of the canvas vertically
 const IMG_Z_MAX =  4.5
 
 export type DotPosition =
@@ -42,60 +42,69 @@ export function getDotPosition(
   }
 }
 
-// Render the strike zone as a pixel image.
-// Returns one 4-bit value (0–15) per pixel, row-major, top-to-bottom.
-// 15 = white (bright green on glasses), 0 = black (transparent).
-export function renderZoneImageData(
+// Render the strike zone as a base64-encoded PNG using the browser Canvas API.
+// Returns a base64 string (no data: prefix) suitable for updateImageRawData.
+// White = bright green on glasses; black = transparent (shows through to real world).
+export function renderZoneCanvas(
   pX: number,
   pZ: number,
   szTop: number,
   szBot: number,
   width: number,
   height: number
-): number[] {
-  const pixels = new Array(width * height).fill(0)
+): string {
+  const canvas = document.createElement('canvas')
+  canvas.width  = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+
+  // Black background — transparent on glasses
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, width, height)
+
+  ctx.strokeStyle = '#ffffff'
+  ctx.fillStyle   = '#ffffff'
 
   const margin = 6
+  const innerW = width  - 2 * margin
+  const innerH = height - 2 * margin
 
-  function toPixX(x: number): number {
-    return Math.round(margin + ((x - IMG_X_MIN) / (IMG_X_MAX - IMG_X_MIN)) * (width  - 2 * margin))
+  function toX(x: number): number {
+    return margin + ((x - IMG_X_MIN) / (IMG_X_MAX - IMG_X_MIN)) * innerW
   }
-  function toPixZ(z: number): number {
-    // Z increases upward; pixel Y increases downward — invert
-    return Math.round(margin + ((IMG_Z_MAX - z) / (IMG_Z_MAX - IMG_Z_MIN)) * (height - 2 * margin))
-  }
-
-  function setPixel(x: number, y: number, v: number): void {
-    if (x >= 0 && x < width && y >= 0 && y < height) {
-      pixels[y * width + x] = v
-    }
+  function toZ(z: number): number {
+    // Z increases upward; canvas Y increases downward — invert
+    return margin + ((IMG_Z_MAX - z) / (IMG_Z_MAX - IMG_Z_MIN)) * innerH
   }
 
-  // Draw strike zone border (2 px thick)
-  const zx0 = toPixX(ZONE_LEFT),  zx1 = toPixX(ZONE_RIGHT)
-  const zy0 = toPixZ(szTop),       zy1 = toPixZ(szBot)
-  for (let t = 0; t < 2; t++) {
-    for (let x = zx0; x <= zx1; x++) {
-      setPixel(x, zy0 + t, 15)
-      setPixel(x, zy1 - t, 15)
-    }
-    for (let y = zy0; y <= zy1; y++) {
-      setPixel(zx0 + t, y, 15)
-      setPixel(zx1 - t, y, 15)
-    }
-  }
+  // Strike zone border rectangle (2 px line)
+  ctx.lineWidth = 2
+  const zx0 = toX(ZONE_LEFT),  zx1 = toX(ZONE_RIGHT)
+  const zy0 = toZ(szTop),       zy1 = toZ(szBot)
+  ctx.strokeRect(zx0, zy0, zx1 - zx0, zy1 - zy0)
 
-  // Draw ball as a filled circle
-  const bx = toPixX(pX)
-  const bz = toPixZ(pZ)
-  const r  = Math.max(4, Math.round(Math.min(width, height) * 0.07))
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy <= r * r) {
-        setPixel(bx + dx, bz + dy, 15)
-      }
-    }
-  }
+  // 3×3 grid lines inside the zone
+  ctx.lineWidth = 1
+  const col1 = zx0 + (zx1 - zx0) / 3
+  const col2 = zx0 + (zx1 - zx0) * 2 / 3
+  const row1 = zy0 + (zy1 - zy0) / 3
+  const row2 = zy0 + (zy1 - zy0) * 2 / 3
+  ctx.beginPath()
+  ctx.moveTo(col1, zy0); ctx.lineTo(col1, zy1)
+  ctx.moveTo(col2, zy0); ctx.lineTo(col2, zy1)
+  ctx.moveTo(zx0, row1); ctx.lineTo(zx1, row1)
+  ctx.moveTo(zx0, row2); ctx.lineTo(zx1, row2)
+  ctx.stroke()
 
-  return pixels
+  // Ball — filled circle at pitch location
+  const bx = toX(pX)
+  const bz = toZ(pZ)
+  const r  = Math.max(3, Math.round(Math.min(width, height) * 0.04))
+  ctx.beginPath()
+  ctx.arc(bx, bz, r, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Return base64 only (strip "data:image/png;base64," prefix)
+  return canvas.toDataURL('image/png').split(',')[1]
 }

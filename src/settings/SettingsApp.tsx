@@ -58,11 +58,11 @@ function ContactDetails({ pitch }: { pitch: Pitch }) {
   )
 }
 
-function MatchupLine({ atBat, stats }: { atBat: AtBat; stats: MatchupStats | null }) {
+function MatchupLine({ atBat, batterTeam, pitcherTeam, stats }: { atBat: AtBat; batterTeam: string; pitcherTeam: string; stats: MatchupStats | null }) {
   if (!stats) return null
   return (
     <div className="text-xs text-text-dim text-center mt-3 pt-3 border-t border-border">
-      {atBat.batterLastName} vs {atBat.pitcherLastName}: {stats.avg}  {stats.hr} HR  {stats.ab} AB
+      {batterTeam} {atBat.batterLastName} vs {pitcherTeam} {atBat.pitcherLastName}: {stats.avg}  {stats.hr} HR  {stats.ab} AB
     </div>
   )
 }
@@ -216,25 +216,29 @@ export function SettingsApp() {
               </div>
 
               {/* Pitch view — Live game with pitch data */}
-              {game.gameState === 'Live' && atBat && pitch && (
-                <>
-                  <div className="text-xs text-center text-text-dim mb-1">Catcher's view</div>
-                  <ZoneSvg pX={pitch.pX} pZ={pitch.pZ} szTop={pitch.szTop} szBot={pitch.szBot} />
+              {game.gameState === 'Live' && atBat && pitch && (() => {
+                const batterTeam  = game.inningHalf === 'Top' ? game.awayTeam : game.homeTeam
+                const pitcherTeam = game.inningHalf === 'Top' ? game.homeTeam : game.awayTeam
+                return (
+                  <>
+                    <div className="text-xs text-center text-text-dim mb-1">Catcher's view</div>
+                    <ZoneSvg pX={pitch.pX} pZ={pitch.pZ} szTop={pitch.szTop} szBot={pitch.szBot} />
 
-                  <div className="mt-3 text-sm text-center text-text-dim">
-                    B: {atBat.batterLastName} [{atBat.batterHand}]
-                    &nbsp;&nbsp;&nbsp;
-                    P: {atBat.pitcherLastName} [{atBat.pitcherHand}] {atBat.pitchCount}p
-                  </div>
+                    <div className="mt-3 text-sm text-center text-text-dim">
+                      {batterTeam} B: {atBat.batterLastName} [{atBat.batterHand}]
+                      &nbsp;&nbsp;&nbsp;
+                      {pitcherTeam} P: {atBat.pitcherLastName} [{atBat.pitcherHand}] {atBat.pitchCount}p
+                    </div>
 
-                  {pitch.isContact
-                    ? <ContactDetails pitch={pitch} />
-                    : <PitchDetails pitch={pitch} />
-                  }
+                    {pitch.isContact
+                      ? <ContactDetails pitch={pitch} />
+                      : <PitchDetails pitch={pitch} />
+                    }
 
-                  <MatchupLine atBat={atBat} stats={matchupStats} />
-                </>
-              )}
+                    <MatchupLine atBat={atBat} batterTeam={batterTeam} pitcherTeam={pitcherTeam} stats={matchupStats} />
+                  </>
+                )
+              })()}
             </>
           )}
         </div>
