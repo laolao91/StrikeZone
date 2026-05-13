@@ -171,7 +171,7 @@ async function _refreshDisplay(): Promise<void> {
   }
 
   const pitchIndex = s.pitchHistoryIndex !== null ? s.pitchHistoryIndex + 1 : null
-  const imageData  = renderZoneCanvas(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
+  const imageData  = await renderZoneCanvas(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
   const splits     = renderSplitsInfo(atBat, game, s.matchupStats)
 
   if (pitch.isContact) {
