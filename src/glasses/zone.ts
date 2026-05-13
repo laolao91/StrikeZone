@@ -47,10 +47,10 @@ export function getDotPosition(
 // return zeroed data under fingerprinting protection.  Generating the PNG
 // entirely in JS bypasses both restrictions.
 //
-// Compression: uses CompressionStream('deflate-raw') when available (iOS 16.4+,
-// Chrome 80+). A mostly-black zone image compresses from ~23 KB to <1 KB,
-// well within the BLE send limit.  Falls back to uncompressed DEFLATE blocks
-// (BTYPE=00) on older runtimes.
+// Compression: CompressionStream was tried but hangs indefinitely in some
+// WKWebView runtimes, permanently blocking the displayInFlight guard.
+// Instead we use uncompressed DEFLATE stored blocks (BTYPE=00) and keep
+// the image at 60×72 px so the file is ~6 KB base64 — under the BLE limit.
 
 function adler32(data: Uint8Array): number {
   let s1 = 1, s2 = 0
@@ -87,38 +87,15 @@ function pngChunk(type: string, data: number[]): number[] {
   return [...u32be(data.length), ...typeBytes, ...data, ...u32be(crc32(payload))]
 }
 
-// Wraps raw (filter-prepended) image rows in a zlib stream.
-// Uses CompressionStream for real DEFLATE compression when available —
-// a zone image compresses from ~17 KB raw to ~200-400 bytes.
-async function buildZlib(raw: Uint8Array): Promise<number[]> {
-  const adler = adler32(raw)
-
-  // Try CompressionStream (available iOS 16.4+, Chrome 80+, Firefox 113+)
-  const CS = (globalThis as Record<string, unknown>)['CompressionStream'] as
-    (new (format: string) => { writable: WritableStream; readable: ReadableStream }) | undefined
-  if (CS) {
-    try {
-      const cs = new CS('deflate-raw')
-      const writer = cs.writable.getWriter()
-      await writer.write(raw)
-      await writer.close()
-      const chunks: Uint8Array[] = []
-      const reader = cs.readable.getReader()
-      while (true) {
-        const { done, value } = await reader.read() as { done: boolean; value: Uint8Array }
-        if (done) break
-        chunks.push(value)
-      }
-      const totalLen = chunks.reduce((s, c) => s + c.length, 0)
-      const compressed = new Uint8Array(totalLen)
-      let off = 0
-      for (const c of chunks) { compressed.set(c, off); off += c.length }
-      // zlib wrap: [0x78, 0x01] header + deflate bytes + adler32
-      return [0x78, 0x01, ...compressed, ...u32be(adler)]
-    } catch { /* fall through */ }
+function encodePNG(pixels: Uint8Array, width: number, height: number): string {
+  // Filter byte 0 (None) prepended to each row
+  const raw = new Uint8Array(height * (1 + width))
+  for (let y = 0; y < height; y++) {
+    raw[y * (1 + width)] = 0
+    raw.set(pixels.subarray(y * width, (y + 1) * width), y * (1 + width) + 1)
   }
 
-  // Fallback: uncompressed DEFLATE stored blocks (BTYPE=00)
+  // Uncompressed DEFLATE stored blocks (BTYPE=00)
   const blocks: number[] = []
   const BLOCK = 65535
   for (let offset = 0; offset < raw.length; offset += BLOCK) {
@@ -128,18 +105,8 @@ async function buildZlib(raw: Uint8Array): Promise<number[]> {
     blocks.push(isFinal, len & 0xff, (len >> 8) & 0xff, (~len) & 0xff, (~len >> 8) & 0xff)
     for (let i = 0; i < chunk.length; i++) blocks.push(chunk[i])
   }
-  return [0x78, 0x01, ...blocks, ...u32be(adler)]
-}
-
-async function encodePNG(pixels: Uint8Array, width: number, height: number): Promise<string> {
-  // Filter byte 0 (None) prepended to each row
-  const raw = new Uint8Array(height * (1 + width))
-  for (let y = 0; y < height; y++) {
-    raw[y * (1 + width)] = 0
-    raw.set(pixels.subarray(y * width, (y + 1) * width), y * (1 + width) + 1)
-  }
-
-  const zlib = await buildZlib(raw)
+  const adler = adler32(raw)
+  const zlib = [0x78, 0x01, ...blocks, ...u32be(adler)]
 
   const png = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
@@ -155,14 +122,14 @@ async function encodePNG(pixels: Uint8Array, width: number, height: number): Pro
 
 // ── Strike zone renderer ──────────────────────────────────────────────────────
 
-export async function renderZoneCanvas(
+export function renderZoneCanvas(
   pX: number,
   pZ: number,
   szTop: number,
   szBot: number,
   width: number,
   height: number
-): Promise<string> {
+): string {
   const pixels = new Uint8Array(width * height) // 0 = black/transparent
 
   function set(x: number, y: number): void {
@@ -187,7 +154,7 @@ export async function renderZoneCanvas(
         if (dx * dx + dy * dy <= r * r) set(cx + dx, cy + dy)
   }
 
-  const margin = 6
+  const margin = 4
   const innerW = width  - 2 * margin
   const innerH = height - 2 * margin
 
@@ -215,7 +182,7 @@ export async function renderZoneCanvas(
   hLine(zx0, zx1, row1)
   hLine(zx0, zx1, row2)
 
-  const r = Math.max(3, Math.round(Math.min(width, height) * 0.04))
+  const r = Math.max(2, Math.round(Math.min(width, height) * 0.05))
   disc(toX(pX), toZ(pZ), r)
 
   return encodePNG(pixels, width, height)

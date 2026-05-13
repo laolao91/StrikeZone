@@ -57,8 +57,8 @@ const INFO_ID   = 3,  INFO_NAME   = 'info'
 const SPLITS_ID = 4,  SPLITS_NAME = 'splits'
 
 // Zone image dimensions (SDK limits: width 20–288, height 20–144)
-const ZONE_W = 120
-const ZONE_H = 144
+const ZONE_W = 60
+const ZONE_H = 72
 
 // Pixels from top of screen to the zone/info/splits row
 const HEADER_H = 36
@@ -171,7 +171,7 @@ async function _refreshDisplay(): Promise<void> {
   }
 
   const pitchIndex = s.pitchHistoryIndex !== null ? s.pitchHistoryIndex + 1 : null
-  const imageData  = await renderZoneCanvas(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
+  const imageData  = renderZoneCanvas(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
   const splits     = renderSplitsInfo(atBat, game, s.matchupStats)
 
   if (pitch.isContact) {
