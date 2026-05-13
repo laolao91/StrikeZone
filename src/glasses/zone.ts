@@ -181,5 +181,5 @@ export function renderZoneCanvas(
   const r = Math.max(3, Math.round(Math.min(width, height) * 0.04))
   disc(toX(pX), toZ(pZ), r)
 
-  return 'data:image/png;base64,' + encodePNG(pixels, width, height)
+  return encodePNG(pixels, width, height)
 }
