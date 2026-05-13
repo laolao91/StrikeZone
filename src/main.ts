@@ -95,7 +95,7 @@ async function renderPitch(
   header: string,
   info: string,
   splits: string,
-  imageData: number[],
+  imageData: string,
 ): Promise<void> {
   if (!bridge) return
   await upgradeText(HDR_ID,    HDR_NAME,    header)
