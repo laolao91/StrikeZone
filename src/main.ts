@@ -134,7 +134,7 @@ async function renderStandard(header: string, body: string): Promise<void> {
   }))
 }
 
-async function renderPitch(header: string, info: string, splits: string, imageData: string): Promise<void> {
+async function renderPitch(header: string, info: string, splits: string, imageData: Uint8Array): Promise<void> {
   if (!bridge) return
 
   if (currentLayout !== 'pitch') {

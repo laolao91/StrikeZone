@@ -42,9 +42,11 @@ export function getDotPosition(
   }
 }
 
-// Render the strike zone as a base64-encoded PNG using the browser Canvas API.
-// Returns a base64 string (no data: prefix) suitable for updateImageRawData.
-// White = bright green on glasses; black = transparent (shows through to real world).
+// Render the strike zone and return raw RGBA pixel data as Uint8Array.
+// The SDK's normalizeImageData sends Uint8Array as a number[] to Flutter,
+// which converts RGBA → 4-bit greyscale internally before sending to the glasses.
+// Passing a string routes through a different Flutter code path (base64 image
+// file decoding) which fails with imageToGray4Failed on non-PNG/JPEG data.
 export function renderZoneCanvas(
   pX: number,
   pZ: number,
@@ -52,12 +54,12 @@ export function renderZoneCanvas(
   szBot: number,
   width: number,
   height: number
-): string {
+): Uint8Array {
   const canvas = document.createElement('canvas')
   canvas.width  = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
-  if (!ctx) return ''
+  if (!ctx) return new Uint8Array(0)
 
   // Black background — transparent on glasses
   ctx.fillStyle = '#000000'
@@ -105,19 +107,7 @@ export function renderZoneCanvas(
   ctx.arc(bx, bz, r, 0, Math.PI * 2)
   ctx.fill()
 
-  // Extract RGBA pixels and pack as 4-bit greyscale (2 pixels per byte,
-  // high nibble first). This is the raw format the G2 firmware requires —
-  // it cannot decode PNG; toDataURL was silently rejected on hardware.
-  const { data } = ctx.getImageData(0, 0, width, height)
-  const totalPixels = width * height
-  const packed = new Uint8Array(Math.ceil(totalPixels / 2))
-  for (let i = 0; i < totalPixels; i++) {
-    const off = i * 4
-    const grey = Math.round(((data[off] + data[off + 1] + data[off + 2]) / 3) / 255 * 15) & 0xF
-    if (i % 2 === 0) packed[i >> 1]  = grey << 4
-    else             packed[i >> 1] |= grey
-  }
-  let bin = ''
-  for (let i = 0; i < packed.length; i++) bin += String.fromCharCode(packed[i])
-  return btoa(bin)
+  // Return raw RGBA bytes — Flutter's updateImageRawData pipeline converts
+  // these to 4-bit greyscale before sending to the glasses display.
+  return new Uint8Array(ctx.getImageData(0, 0, width, height).data.buffer)
 }
