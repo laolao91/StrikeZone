@@ -1,11 +1,9 @@
 const ZONE_LEFT  = -0.83
 const ZONE_RIGHT =  0.83
 
-// Fixed coordinate range for the image canvas (feet).
-// Wider than the zone so out-of-zone pitches still appear.
 const IMG_X_MIN = -1.5
 const IMG_X_MAX =  1.5
-const IMG_Z_MIN =  1.0   // raised floor so zone fills more of the canvas vertically
+const IMG_Z_MIN =  1.0
 const IMG_Z_MAX =  4.5
 
 export type DotPosition =
@@ -42,11 +40,10 @@ export function getDotPosition(
   }
 }
 
-// Render the strike zone and return raw RGBA pixel data as Uint8Array.
-// The SDK's normalizeImageData sends Uint8Array as a number[] to Flutter,
-// which converts RGBA → 4-bit greyscale internally before sending to the glasses.
-// Passing a string routes through a different Flutter code path (base64 image
-// file decoding) which fails with imageToGray4Failed on non-PNG/JPEG data.
+// Generate a raw RGBA pixel buffer for the strike zone — no canvas, no DOM.
+// Canvas getImageData() returns zeroed data under iOS WKWebView canvas
+// fingerprinting protection, producing an all-transparent image on glasses.
+// Pure JS pixel generation bypasses that restriction entirely.
 export function renderZoneCanvas(
   pX: number,
   pZ: number,
@@ -55,18 +52,32 @@ export function renderZoneCanvas(
   width: number,
   height: number
 ): Uint8Array {
-  const canvas = document.createElement('canvas')
-  canvas.width  = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return new Uint8Array(0)
+  // RGBA buffer — all zeros = black/transparent background
+  const rgba = new Uint8Array(width * height * 4)
 
-  // Black background — transparent on glasses
-  ctx.fillStyle = '#000000'
-  ctx.fillRect(0, 0, width, height)
+  function setPixel(x: number, y: number): void {
+    const xi = Math.round(x)
+    const yi = Math.round(y)
+    if (xi < 0 || xi >= width || yi < 0 || yi >= height) return
+    const i = (yi * width + xi) * 4
+    rgba[i] = rgba[i + 1] = rgba[i + 2] = rgba[i + 3] = 255
+  }
 
-  ctx.strokeStyle = '#ffffff'
-  ctx.fillStyle   = '#ffffff'
+  function hLine(x0: number, x1: number, y: number, thick = 1): void {
+    for (let x = Math.floor(x0); x <= Math.ceil(x1); x++)
+      for (let t = 0; t < thick; t++) setPixel(x, y + t)
+  }
+
+  function vLine(x: number, y0: number, y1: number, thick = 1): void {
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++)
+      for (let t = 0; t < thick; t++) setPixel(x + t, y)
+  }
+
+  function disc(cx: number, cy: number, r: number): void {
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++)
+        if (dx * dx + dy * dy <= r * r) setPixel(cx + dx, cy + dy)
+  }
 
   const margin = 6
   const innerW = width  - 2 * margin
@@ -76,38 +87,31 @@ export function renderZoneCanvas(
     return margin + ((x - IMG_X_MIN) / (IMG_X_MAX - IMG_X_MIN)) * innerW
   }
   function toZ(z: number): number {
-    // Z increases upward; canvas Y increases downward — invert
     return margin + ((IMG_Z_MAX - z) / (IMG_Z_MAX - IMG_Z_MIN)) * innerH
   }
 
-  // Strike zone border rectangle (2 px line)
-  ctx.lineWidth = 2
   const zx0 = toX(ZONE_LEFT),  zx1 = toX(ZONE_RIGHT)
   const zy0 = toZ(szTop),       zy1 = toZ(szBot)
-  ctx.strokeRect(zx0, zy0, zx1 - zx0, zy1 - zy0)
 
-  // 3×3 grid lines inside the zone
-  ctx.lineWidth = 1
+  // Zone border (2 px)
+  hLine(zx0, zx1, zy0, 2)
+  hLine(zx0, zx1, zy1, 2)
+  vLine(zx0, zy0, zy1, 2)
+  vLine(zx1, zy0, zy1, 2)
+
+  // 3×3 grid lines (1 px)
   const col1 = zx0 + (zx1 - zx0) / 3
   const col2 = zx0 + (zx1 - zx0) * 2 / 3
   const row1 = zy0 + (zy1 - zy0) / 3
   const row2 = zy0 + (zy1 - zy0) * 2 / 3
-  ctx.beginPath()
-  ctx.moveTo(col1, zy0); ctx.lineTo(col1, zy1)
-  ctx.moveTo(col2, zy0); ctx.lineTo(col2, zy1)
-  ctx.moveTo(zx0, row1); ctx.lineTo(zx1, row1)
-  ctx.moveTo(zx0, row2); ctx.lineTo(zx1, row2)
-  ctx.stroke()
+  vLine(col1, zy0, zy1)
+  vLine(col2, zy0, zy1)
+  hLine(zx0, zx1, row1)
+  hLine(zx0, zx1, row2)
 
-  // Ball — filled circle at pitch location
-  const bx = toX(pX)
-  const bz = toZ(pZ)
-  const r  = Math.max(3, Math.round(Math.min(width, height) * 0.04))
-  ctx.beginPath()
-  ctx.arc(bx, bz, r, 0, Math.PI * 2)
-  ctx.fill()
+  // Pitch dot
+  const r = Math.max(3, Math.round(Math.min(width, height) * 0.04))
+  disc(toX(pX), toZ(pZ), r)
 
-  // Return raw RGBA bytes — Flutter's updateImageRawData pipeline converts
-  // these to 4-bit greyscale before sending to the glasses display.
-  return new Uint8Array(ctx.getImageData(0, 0, width, height).data.buffer)
+  return rgba
 }

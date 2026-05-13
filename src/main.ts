@@ -64,6 +64,7 @@ const ZONE_H = 144
 const HEADER_H = 36
 
 let bridge: EvenAppBridge | null = null
+let displayInFlight = false
 
 // ── Layout geometry (computed once) ─────────────────────────────────────────
 
@@ -108,6 +109,18 @@ async function renderPitch(
 // ── Display logic ─────────────────────────────────────────────────────────────
 
 async function refreshDisplay(): Promise<void> {
+  // SDK requires updateImageRawData calls to be serial. Guard against
+  // concurrent calls from rapid notify() firings during init/refresh.
+  if (displayInFlight) return
+  displayInFlight = true
+  try {
+    await _refreshDisplay()
+  } finally {
+    displayInFlight = false
+  }
+}
+
+async function _refreshDisplay(): Promise<void> {
   if (!bridge) return
   const s = getState()
 
