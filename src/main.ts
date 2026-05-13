@@ -150,6 +150,10 @@ async function renderPitch(header: string, info: string, splits: string, imageDa
         }),
       ],
     }))
+    // Give the glasses firmware time to finish processing the rebuild over BLE
+    // before sending image data — without this, updateImageRawData arrives while
+    // the container is still being set up and the image is silently dropped.
+    await new Promise(resolve => setTimeout(resolve, 150))
   } else {
     await bridge.textContainerUpgrade(new TextContainerUpgrade({
       containerID: HDR2_ID, containerName: HDR2_NAME,
