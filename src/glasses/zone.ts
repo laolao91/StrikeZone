@@ -120,7 +120,42 @@ function encodePNG(pixels: Uint8Array, width: number, height: number): string {
   return btoa(bin)
 }
 
-// ── Strike zone renderer ──────────────────────────────────────────────────────
+// ── Text-based strike zone (replaces image approach) ─────────────────────────
+//
+// Draws a 3×3 ASCII grid using getDotPosition() output.  A textContainerUpgrade
+// is ~100 bytes and never fails due to BLE size limits, unlike PNG images.
+//
+// In-zone:    dot placed in the correct cell
+// Out-of-zone: empty grid + direction indicator (▲ ▼ ◄ ►) outside the box
+
+export function renderZoneText(
+  pX: number,
+  pZ: number,
+  szTop: number,
+  szBot: number
+): string {
+  const pos = getDotPosition(pX, pZ, szTop, szBot)
+
+  const g = [[' ',' ',' '],[' ',' ',' '],[' ',' ',' ']]
+  if (pos.inZone) g[pos.row][pos.col] = '●'
+
+  const div = '+-+-+-+'
+  const row = (r: number) => `|${g[r][0]}|${g[r][1]}|${g[r][2]}|`
+  const lines: string[] = []
+
+  if (!pos.inZone && pos.vPos === 'above') lines.push('  ▲')
+  lines.push(div)
+  for (let r = 0; r < 3; r++) { lines.push(row(r)); lines.push(div) }
+
+  const after = (!pos.inZone && pos.vPos === 'below' ? '▼' : '')
+              + (!pos.inZone && pos.hPos === 'left'  ? '◄' : '')
+              + (!pos.inZone && pos.hPos === 'right' ? '►' : '')
+  if (after) lines.push(' ' + after)
+
+  return lines.join('\n')
+}
+
+// ── Strike zone PNG renderer (kept for reference / future phone use) ──────────
 
 export function renderZoneCanvas(
   pX: number,

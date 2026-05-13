@@ -2,8 +2,6 @@ import {
   waitForEvenAppBridge,
   CreateStartUpPageContainer,
   TextContainerProperty,
-  ImageContainerProperty,
-  ImageRawDataUpdate,
   TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk'
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
@@ -32,33 +30,28 @@ import {
   renderGameList,
   renderStateScreen,
 } from './glasses/display'
-import { renderZoneCanvas } from './glasses/zone'
+import { renderZoneText } from './glasses/zone'
 import { setupInput } from './glasses/input'
 import { initSettingsPage } from './settings/settings-mount'
 
 // ── Container IDs ────────────────────────────────────────────────────────────
 //
-// Single fixed layout, registered once in createStartUpPageContainer:
-//   HDR  (full-width 2-line header, top)
-//   ZONE (image, left column below header)
-//   INFO (text, centre column below header, event capture)
-//   SPLITS (text, right column below header)
+// All four containers are text — no image container.
+// BLE sendFailed at every image size we tried; text updates are ~100 bytes
+// and never hit the BLE limit.
 //
-// Standard views (game list, loading, error) reuse HDR + INFO via
-// textContainerUpgrade; SPLITS is cleared and ZONE shows last image.
-// Pitch views populate all four.
-//
-// Image containers must be declared in createStartUpPageContainer —
-// they do not survive rebuildPageContainer on hardware.
+//   HDR    (full-width 2-line header, top)
+//   ZONE   (text, left column — ASCII 3×3 strike zone grid)
+//   INFO   (text, centre column, event capture)
+//   SPLITS (text, right column)
 
 const HDR_ID    = 1,  HDR_NAME    = 'hdr'
 const ZONE_ID   = 2,  ZONE_NAME   = 'zone'
 const INFO_ID   = 3,  INFO_NAME   = 'info'
 const SPLITS_ID = 4,  SPLITS_NAME = 'splits'
 
-// Zone image dimensions (SDK limits: width 20–288, height 20–144)
-const ZONE_W = 60
-const ZONE_H = 72
+const ZONE_W = 120
+const ZONE_H = 144
 
 // Pixels from top of screen to the zone/info/splits row
 const HEADER_H = 36
@@ -87,27 +80,22 @@ async function upgradeText(id: number, name: string, content: string): Promise<v
 async function renderStandard(header: string, body: string): Promise<void> {
   if (!bridge) return
   await upgradeText(HDR_ID,    HDR_NAME,    header)
+  await upgradeText(ZONE_ID,   ZONE_NAME,   '')
   await upgradeText(INFO_ID,   INFO_NAME,   body)
   await upgradeText(SPLITS_ID, SPLITS_NAME, '')
 }
 
 async function renderPitch(
   header: string,
+  zone: string,
   info: string,
   splits: string,
-  imageData: string,
 ): Promise<void> {
   if (!bridge) return
   await upgradeText(HDR_ID,    HDR_NAME,    header)
+  await upgradeText(ZONE_ID,   ZONE_NAME,   zone)
   await upgradeText(INFO_ID,   INFO_NAME,   info)
   await upgradeText(SPLITS_ID, SPLITS_NAME, splits)
-  const imgResult = await bridge.updateImageRawData(new ImageRawDataUpdate({
-    containerID: ZONE_ID, containerName: ZONE_NAME, imageData,
-  }))
-  if (imgResult !== 'success') {
-    console.warn('updateImageRawData:', imgResult)
-    await upgradeText(SPLITS_ID, SPLITS_NAME, `IMG ERR: ${imgResult}\n\n${splits}`)
-  }
 }
 
 // ── Display logic ─────────────────────────────────────────────────────────────
@@ -171,22 +159,22 @@ async function _refreshDisplay(): Promise<void> {
   }
 
   const pitchIndex = s.pitchHistoryIndex !== null ? s.pitchHistoryIndex + 1 : null
-  const imageData  = renderZoneCanvas(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
+  const zone       = renderZoneText(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot)
   const splits     = renderSplitsInfo(atBat, game, s.matchupStats)
 
   if (pitch.isContact) {
     await renderPitch(
       renderPitchHeader(game, atBat),
+      zone,
       renderContactInfo(atBat, pitch),
       splits,
-      imageData,
     )
   } else {
     await renderPitch(
       renderPitchHeader(game, atBat),
+      zone,
       renderPitchInfo(atBat, pitch, pitchIndex, atBat.pitches.length),
       splits,
-      imageData,
     )
   }
 }
@@ -197,8 +185,6 @@ async function startGlassesMode(b: EvenAppBridge): Promise<void> {
   bridge = b
   initStorage(b)
 
-  // Register the image container here — it must be in createStartUpPageContainer.
-  // rebuildPageContainer does not persist image containers on hardware.
   await b.createStartUpPageContainer(new CreateStartUpPageContainer({
     containerTotalNum: 4,
     textObject: [
@@ -207,6 +193,13 @@ async function startGlassesMode(b: EvenAppBridge): Promise<void> {
         borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
         containerID: HDR_ID, containerName: HDR_NAME,
         content: 'StrikeZone', isEventCapture: 0,
+      }),
+      new TextContainerProperty({
+        xPosition: 0, yPosition: HEADER_H,
+        width: ZONE_W, height: ZONE_H,
+        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 1,
+        containerID: ZONE_ID, containerName: ZONE_NAME,
+        content: '', isEventCapture: 0,
       }),
       new TextContainerProperty({
         xPosition: INFO_X, yPosition: HEADER_H,
@@ -221,13 +214,6 @@ async function startGlassesMode(b: EvenAppBridge): Promise<void> {
         borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
         containerID: SPLITS_ID, containerName: SPLITS_NAME,
         content: '', isEventCapture: 0,
-      }),
-    ],
-    imageObject: [
-      new ImageContainerProperty({
-        xPosition: 0, yPosition: HEADER_H,
-        width: ZONE_W, height: ZONE_H,
-        containerID: ZONE_ID, containerName: ZONE_NAME,
       }),
     ],
   }))
