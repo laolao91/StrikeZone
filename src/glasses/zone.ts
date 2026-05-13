@@ -40,10 +40,9 @@ export function getDotPosition(
   }
 }
 
-// Generate a raw RGBA pixel buffer for the strike zone — no canvas, no DOM.
-// Canvas getImageData() returns zeroed data under iOS WKWebView canvas
-// fingerprinting protection, producing an all-transparent image on glasses.
-// Pure JS pixel generation bypasses that restriction entirely.
+// Generate strike zone pixel data as a flat number[] of 4-bit greyscale values.
+// One element per pixel, values 0 (black/transparent) to 15 (bright white/green).
+// Array length = width × height. This is the native format the G2 firmware expects.
 export function renderZoneCanvas(
   pX: number,
   pZ: number,
@@ -51,32 +50,29 @@ export function renderZoneCanvas(
   szBot: number,
   width: number,
   height: number
-): Uint8Array {
-  // RGBA buffer — all zeros = black/transparent background
-  const rgba = new Uint8Array(width * height * 4)
+): number[] {
+  const pixels = new Array<number>(width * height).fill(0)
 
-  function setPixel(x: number, y: number): void {
-    const xi = Math.round(x)
-    const yi = Math.round(y)
-    if (xi < 0 || xi >= width || yi < 0 || yi >= height) return
-    const i = (yi * width + xi) * 4
-    rgba[i] = rgba[i + 1] = rgba[i + 2] = rgba[i + 3] = 255
+  function set(x: number, y: number): void {
+    const xi = Math.round(x), yi = Math.round(y)
+    if (xi >= 0 && xi < width && yi >= 0 && yi < height)
+      pixels[yi * width + xi] = 15
   }
 
   function hLine(x0: number, x1: number, y: number, thick = 1): void {
     for (let x = Math.floor(x0); x <= Math.ceil(x1); x++)
-      for (let t = 0; t < thick; t++) setPixel(x, y + t)
+      for (let t = 0; t < thick; t++) set(x, y + t)
   }
 
   function vLine(x: number, y0: number, y1: number, thick = 1): void {
     for (let y = Math.floor(y0); y <= Math.ceil(y1); y++)
-      for (let t = 0; t < thick; t++) setPixel(x + t, y)
+      for (let t = 0; t < thick; t++) set(x + t, y)
   }
 
   function disc(cx: number, cy: number, r: number): void {
     for (let dy = -r; dy <= r; dy++)
       for (let dx = -r; dx <= r; dx++)
-        if (dx * dx + dy * dy <= r * r) setPixel(cx + dx, cy + dy)
+        if (dx * dx + dy * dy <= r * r) set(cx + dx, cy + dy)
   }
 
   const margin = 6
@@ -113,5 +109,5 @@ export function renderZoneCanvas(
   const r = Math.max(3, Math.round(Math.min(width, height) * 0.04))
   disc(toX(pX), toZ(pZ), r)
 
-  return rgba
+  return pixels
 }

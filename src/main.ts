@@ -95,15 +95,16 @@ async function renderPitch(
   header: string,
   info: string,
   splits: string,
-  imageData: Uint8Array,
+  imageData: number[],
 ): Promise<void> {
   if (!bridge) return
   await upgradeText(HDR_ID,    HDR_NAME,    header)
   await upgradeText(INFO_ID,   INFO_NAME,   info)
   await upgradeText(SPLITS_ID, SPLITS_NAME, splits)
-  await bridge.updateImageRawData(new ImageRawDataUpdate({
+  const imgResult = await bridge.updateImageRawData(new ImageRawDataUpdate({
     containerID: ZONE_ID, containerName: ZONE_NAME, imageData,
   }))
+  if (imgResult !== 'success') console.warn('updateImageRawData:', imgResult)
 }
 
 // ── Display logic ─────────────────────────────────────────────────────────────
