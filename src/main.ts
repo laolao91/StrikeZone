@@ -104,7 +104,10 @@ async function renderPitch(
   const imgResult = await bridge.updateImageRawData(new ImageRawDataUpdate({
     containerID: ZONE_ID, containerName: ZONE_NAME, imageData,
   }))
-  if (imgResult !== 'success') console.warn('updateImageRawData:', imgResult)
+  if (imgResult !== 'success') {
+    console.warn('updateImageRawData:', imgResult)
+    await upgradeText(SPLITS_ID, SPLITS_NAME, `IMG ERR: ${imgResult}\n\n${splits}`)
+  }
 }
 
 // ── Display logic ─────────────────────────────────────────────────────────────
