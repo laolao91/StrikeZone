@@ -4,7 +4,6 @@ import {
   TextContainerProperty,
   ImageContainerProperty,
   ImageRawDataUpdate,
-  RebuildPageContainer,
   TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk'
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
@@ -38,151 +37,84 @@ import { setupInput } from './glasses/input'
 import { initSettingsPage } from './settings/settings-mount'
 
 // ── Container IDs ────────────────────────────────────────────────────────────
+//
+// Single fixed layout, registered once in createStartUpPageContainer:
+//   HDR  (full-width 2-line header, top)
+//   ZONE (image, left column below header)
+//   INFO (text, centre column below header, event capture)
+//   SPLITS (text, right column below header)
+//
+// Standard views (game list, loading, error) reuse HDR + INFO via
+// textContainerUpgrade; SPLITS is cleared and ZONE shows last image.
+// Pitch views populate all four.
+//
+// Image containers must be declared in createStartUpPageContainer —
+// they do not survive rebuildPageContainer on hardware.
 
-// Standard layout (game list, loading, error states):
-//   HDR (full-width title) + BODY (full-width scrollable body, event capture)
-const HDR_ID   = 1,  HDR_NAME   = 'hdr'
-const BODY_ID  = 2,  BODY_NAME  = 'body'
-
-// Pitch layout (live pitch / contact views):
-//   HDR2 (two-line header) + ZONE (image) + INFO (pitch details, event capture) + SPLITS (matchup stats)
-const HDR2_ID   = 10, HDR2_NAME   = 'hdr2'
-const ZONE_ID   = 11, ZONE_NAME   = 'zone'
-const INFO_ID   = 12, INFO_NAME   = 'info'
-const SPLITS_ID = 13, SPLITS_NAME = 'splits'
+const HDR_ID    = 1,  HDR_NAME    = 'hdr'
+const ZONE_ID   = 2,  ZONE_NAME   = 'zone'
+const INFO_ID   = 3,  INFO_NAME   = 'info'
+const SPLITS_ID = 4,  SPLITS_NAME = 'splits'
 
 // Zone image dimensions (SDK limits: width 20–288, height 20–144)
-const ZONE_W   = 120
-const ZONE_H   = 144
+const ZONE_W = 120
+const ZONE_H = 144
 
-// Vertical start of the zone/info area (pixels below the top of screen)
-const PITCH_HEADER_H = 36  // header tall enough for 2 lines
+// Pixels from top of screen to the zone/info/splits row
+const HEADER_H = 36
 
 let bridge: EvenAppBridge | null = null
 
-// Track which layout is currently rendered so we can skip full rebuilds.
-type LayoutMode = 'none' | 'standard' | 'pitch'
-let currentLayout: LayoutMode = 'none'
+// ── Layout geometry (computed once) ─────────────────────────────────────────
 
-// ── Layout builders ──────────────────────────────────────────────────────────
+const INFO_X   = ZONE_W + 2
+const INFO_W   = Math.floor((576 - INFO_X - 2) / 2)
+const SPLITS_X = INFO_X + INFO_W + 2
+const SPLITS_W = 576 - SPLITS_X
 
-function makeStandardTextProps(header: string, body: string): TextContainerProperty[] {
-  return [
-    new TextContainerProperty({
-      xPosition: 0, yPosition: 0, width: 576, height: 28,
-      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-      containerID: HDR_ID, containerName: HDR_NAME,
-      content: header, isEventCapture: 0,
-    }),
-    new TextContainerProperty({
-      xPosition: 0, yPosition: 28, width: 576, height: 260,
-      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-      containerID: BODY_ID, containerName: BODY_NAME,
-      content: body, isEventCapture: 1,
-    }),
-  ]
-}
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makePitchTextProps(header: string, info: string, splits: string): TextContainerProperty[] {
-  const infoX   = ZONE_W + 2
-  const infoW   = Math.floor((576 - infoX - 2) / 2)
-  const splitsX = infoX + infoW + 2
-  const splitsW = 576 - splitsX
-  return [
-    new TextContainerProperty({
-      xPosition: 0, yPosition: 0, width: 576, height: PITCH_HEADER_H,
-      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-      containerID: HDR2_ID, containerName: HDR2_NAME,
-      content: header, isEventCapture: 0,
-    }),
-    new TextContainerProperty({
-      xPosition: infoX, yPosition: PITCH_HEADER_H,
-      width: infoW, height: 288 - PITCH_HEADER_H,
-      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-      containerID: INFO_ID, containerName: INFO_NAME,
-      content: info, isEventCapture: 1,
-    }),
-    new TextContainerProperty({
-      xPosition: splitsX, yPosition: PITCH_HEADER_H,
-      width: splitsW, height: 288 - PITCH_HEADER_H,
-      borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-      containerID: SPLITS_ID, containerName: SPLITS_NAME,
-      content: splits, isEventCapture: 0,
-    }),
-  ]
-}
-
-async function renderStandard(header: string, body: string): Promise<void> {
-  if (!bridge) return
-
-  if (currentLayout === 'standard') {
-    await bridge.textContainerUpgrade(new TextContainerUpgrade({
-      containerID: HDR_ID, containerName: HDR_NAME,
-      content: header, contentOffset: 0, contentLength: 0,
-    }))
-    await bridge.textContainerUpgrade(new TextContainerUpgrade({
-      containerID: BODY_ID, containerName: BODY_NAME,
-      content: body, contentOffset: 0, contentLength: 0,
-    }))
-    return
-  }
-
-  currentLayout = 'standard'
-  await bridge.rebuildPageContainer(new RebuildPageContainer({
-    containerTotalNum: 2,
-    textObject: makeStandardTextProps(header, body),
+async function upgradeText(id: number, name: string, content: string): Promise<void> {
+  await bridge!.textContainerUpgrade(new TextContainerUpgrade({
+    containerID: id, containerName: name,
+    content, contentOffset: 0, contentLength: 0,
   }))
 }
 
-async function renderPitch(header: string, info: string, splits: string, imageData: Uint8Array): Promise<void> {
+// ── Display functions ─────────────────────────────────────────────────────────
+
+async function renderStandard(header: string, body: string): Promise<void> {
   if (!bridge) return
+  await upgradeText(HDR_ID,    HDR_NAME,    header)
+  await upgradeText(INFO_ID,   INFO_NAME,   body)
+  await upgradeText(SPLITS_ID, SPLITS_NAME, '')
+}
 
-  if (currentLayout !== 'pitch') {
-    currentLayout = 'pitch'
-    await bridge.rebuildPageContainer(new RebuildPageContainer({
-      containerTotalNum: 4,
-      textObject: makePitchTextProps(header, info, splits),
-      imageObject: [
-        new ImageContainerProperty({
-          xPosition: 0, yPosition: PITCH_HEADER_H,
-          width: ZONE_W, height: ZONE_H,
-          containerID: ZONE_ID, containerName: ZONE_NAME,
-        }),
-      ],
-    }))
-  } else {
-    await bridge.textContainerUpgrade(new TextContainerUpgrade({
-      containerID: HDR2_ID, containerName: HDR2_NAME,
-      content: header, contentOffset: 0, contentLength: 0,
-    }))
-    await bridge.textContainerUpgrade(new TextContainerUpgrade({
-      containerID: INFO_ID, containerName: INFO_NAME,
-      content: info, contentOffset: 0, contentLength: 0,
-    }))
-    await bridge.textContainerUpgrade(new TextContainerUpgrade({
-      containerID: SPLITS_ID, containerName: SPLITS_NAME,
-      content: splits, contentOffset: 0, contentLength: 0,
-    }))
-  }
-
+async function renderPitch(
+  header: string,
+  info: string,
+  splits: string,
+  imageData: Uint8Array,
+): Promise<void> {
+  if (!bridge) return
+  await upgradeText(HDR_ID,    HDR_NAME,    header)
+  await upgradeText(INFO_ID,   INFO_NAME,   info)
+  await upgradeText(SPLITS_ID, SPLITS_NAME, splits)
   await bridge.updateImageRawData(new ImageRawDataUpdate({
     containerID: ZONE_ID, containerName: ZONE_NAME, imageData,
   }))
 }
 
-// ── Display logic ────────────────────────────────────────────────────────────
+// ── Display logic ─────────────────────────────────────────────────────────────
 
 async function refreshDisplay(): Promise<void> {
   if (!bridge) return
   const s = getState()
 
-  // ── Game list ──────────────────────────────────────────────────────────────
   if (s.mode === 'game-list') {
     await renderStandard('StrikeZone', renderGameList(s.games, s.gameListIndex, s.gameListViewport))
     return
   }
-
-  // ── Loading / error ────────────────────────────────────────────────────────
   if (s.mode === 'loading') {
     await renderStandard('StrikeZone', renderStateScreen('loading'))
     return
@@ -192,13 +124,11 @@ async function refreshDisplay(): Promise<void> {
     return
   }
 
-  // ── Pitch-view mode ────────────────────────────────────────────────────────
   const game = s.game
   if (!game) {
     await renderStandard('StrikeZone', renderStateScreen('no-game'))
     return
   }
-
   if (game.gameState === 'Final') {
     await renderStandard(renderHeader(game, null), renderStateScreen('final', game))
     return
@@ -217,36 +147,72 @@ async function refreshDisplay(): Promise<void> {
     await renderStandard(renderHeader(game, null), renderStateScreen('loading'))
     return
   }
-
   const pitch = currentPitch()
   if (!pitch) {
     await renderStandard(renderHeader(game, atBat), renderStateScreen('loading'))
     return
   }
 
-  const total = atBat.pitches.length
   const pitchIndex = s.pitchHistoryIndex !== null ? s.pitchHistoryIndex + 1 : null
-  const header = renderPitchHeader(game, atBat)
-  const imageData = renderZoneCanvas(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
+  const imageData  = renderZoneCanvas(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot, ZONE_W, ZONE_H)
+  const splits     = renderSplitsInfo(atBat, game, s.matchupStats)
 
-  const splits = renderSplitsInfo(atBat, game, s.matchupStats)
   if (pitch.isContact) {
-    await renderPitch(header, renderContactInfo(atBat, pitch), splits, imageData)
+    await renderPitch(
+      renderPitchHeader(game, atBat),
+      renderContactInfo(atBat, pitch),
+      splits,
+      imageData,
+    )
   } else {
-    await renderPitch(header, renderPitchInfo(atBat, pitch, pitchIndex, total), splits, imageData)
+    await renderPitch(
+      renderPitchHeader(game, atBat),
+      renderPitchInfo(atBat, pitch, pitchIndex, atBat.pitches.length),
+      splits,
+      imageData,
+    )
   }
 }
 
-// ── Startup ──────────────────────────────────────────────────────────────────
+// ── Startup ───────────────────────────────────────────────────────────────────
 
 async function startGlassesMode(b: EvenAppBridge): Promise<void> {
   bridge = b
   initStorage(b)
 
-  currentLayout = 'standard'
+  // Register the image container here — it must be in createStartUpPageContainer.
+  // rebuildPageContainer does not persist image containers on hardware.
   await b.createStartUpPageContainer(new CreateStartUpPageContainer({
-    containerTotalNum: 2,
-    textObject: makeStandardTextProps('StrikeZone', renderStateScreen('loading')),
+    containerTotalNum: 4,
+    textObject: [
+      new TextContainerProperty({
+        xPosition: 0, yPosition: 0, width: 576, height: HEADER_H,
+        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+        containerID: HDR_ID, containerName: HDR_NAME,
+        content: 'StrikeZone', isEventCapture: 0,
+      }),
+      new TextContainerProperty({
+        xPosition: INFO_X, yPosition: HEADER_H,
+        width: INFO_W, height: 288 - HEADER_H,
+        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+        containerID: INFO_ID, containerName: INFO_NAME,
+        content: renderStateScreen('loading'), isEventCapture: 1,
+      }),
+      new TextContainerProperty({
+        xPosition: SPLITS_X, yPosition: HEADER_H,
+        width: SPLITS_W, height: 288 - HEADER_H,
+        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+        containerID: SPLITS_ID, containerName: SPLITS_NAME,
+        content: '', isEventCapture: 0,
+      }),
+    ],
+    imageObject: [
+      new ImageContainerProperty({
+        xPosition: 0, yPosition: HEADER_H,
+        width: ZONE_W, height: ZONE_H,
+        containerID: ZONE_ID, containerName: ZONE_NAME,
+      }),
+    ],
   }))
 
   onUpdate(() => { refreshDisplay() })
