@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getDotPosition, renderZoneText, renderZoneCanvas, renderZoneBlank,
-  encodePNG4bit,
+  encodePNG4bit, nextCascadeStep,
 } from './zone'
 
 const SZ_TOP = 3.5
@@ -172,5 +172,43 @@ describe('encodePNG4bit', () => {
     const blank = encodePNG4bit(new Uint8Array(W * H), W, H)
     const white = encodePNG4bit(new Uint8Array(W * H).fill(255), W, H)
     expect(blank.length).toBe(white.length)
+  })
+})
+
+describe('nextCascadeStep', () => {
+  it('A + sendFailed → B', () => {
+    expect(nextCascadeStep('A', 'sendFailed')).toBe('B')
+  })
+
+  it('B + sendFailed → failed (C is same size, larger format)', () => {
+    expect(nextCascadeStep('B', 'sendFailed')).toBe('failed')
+  })
+
+  it('A + imageException → C (skip B, same dimensions)', () => {
+    expect(nextCascadeStep('A', 'imageException')).toBe('C')
+  })
+
+  it('A + imageToGray4Failed → C', () => {
+    expect(nextCascadeStep('A', 'imageToGray4Failed')).toBe('C')
+  })
+
+  it('B + imageException → C', () => {
+    expect(nextCascadeStep('B', 'imageException')).toBe('C')
+  })
+
+  it('C + any error → failed', () => {
+    expect(nextCascadeStep('C', 'sendFailed')).toBe('failed')
+    expect(nextCascadeStep('C', 'imageException')).toBe('failed')
+    expect(nextCascadeStep('C', 'imageToGray4Failed')).toBe('failed')
+  })
+
+  it('imageSizeInvalid → resize (caller handles rebuildPageContainer)', () => {
+    expect(nextCascadeStep('A', 'imageSizeInvalid')).toBe('resize')
+    expect(nextCascadeStep('B', 'imageSizeInvalid')).toBe('resize')
+  })
+
+  it('unknown error → failed', () => {
+    expect(nextCascadeStep('A', 'imageException')).not.toBe('failed') // sanity
+    expect(nextCascadeStep('A', 'somethingElse')).toBe('failed')
   })
 })

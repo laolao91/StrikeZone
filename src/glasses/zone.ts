@@ -1,6 +1,35 @@
 const ZONE_LEFT  = -0.83
 const ZONE_RIGHT =  0.83
 
+// ── Cascade types and config ──────────────────────────────────────────────────
+
+export type CascadeStep = 'A' | 'B' | 'C'
+export type NextStep = CascadeStep | 'failed' | 'resize'
+
+export const CASCADE_CONFIG = {
+  A: { width: 120, height: 144, bitDepth: 1 as 1 | 4 },
+  B: { width:  80, height:  96, bitDepth: 1 as 1 | 4 },
+  C: { width:  40, height:  48, bitDepth: 4 as 1 | 4 },
+} as const
+
+// Returns the next cascade step based on the SDK error string, or 'failed'/'resize'.
+// 'resize' means the caller must call rebuildPageContainer then retry the same step.
+export function nextCascadeStep(current: CascadeStep, sdkResult: string): NextStep {
+  switch (sdkResult) {
+    case 'sendFailed':
+      // C is larger than B in 4-bit format, so if B already sendFailed, C will too.
+      return current === 'A' ? 'B' : 'failed'
+    case 'imageException':
+    case 'imageToGray4Failed':
+      // Skip B if coming from A (same dimensions as A, same format — would also fail).
+      return current === 'C' ? 'failed' : 'C'
+    case 'imageSizeInvalid':
+      return 'resize'
+    default:
+      return 'failed'
+  }
+}
+
 const IMG_X_MIN = -1.5
 const IMG_X_MAX =  1.5
 const IMG_Z_MIN =  1.0
