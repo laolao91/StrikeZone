@@ -17,8 +17,8 @@ export const CASCADE_CONFIG = {
 export function nextCascadeStep(current: CascadeStep, sdkResult: string): NextStep {
   switch (sdkResult) {
     case 'sendFailed':
-      // C (~1.4 KB) is smaller than B (~1.5 KB), so a sendFailed at B is a BLE problem, not a size problem.
-      return current === 'A' ? 'B' : 'failed'
+      // A→B→C: each step is smaller (3.1KB→1.1KB→1.0KB binary). Try all three before giving up.
+      return current === 'A' ? 'B' : current === 'B' ? 'C' : 'failed'
     case 'imageException':
     case 'imageToGray4Failed':
       // Skip B if coming from A (same dimensions as A, same format — would also fail).

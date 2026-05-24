@@ -180,8 +180,12 @@ describe('nextCascadeStep', () => {
     expect(nextCascadeStep('A', 'sendFailed')).toBe('B')
   })
 
-  it('B + sendFailed → failed (C is same size, larger format)', () => {
-    expect(nextCascadeStep('B', 'sendFailed')).toBe('failed')
+  it('B + sendFailed → C (C is 48 bytes smaller binary, may clear BLE limit)', () => {
+    expect(nextCascadeStep('B', 'sendFailed')).toBe('C')
+  })
+
+  it('C + sendFailed → failed', () => {
+    expect(nextCascadeStep('C', 'sendFailed')).toBe('failed')
   })
 
   it('A + imageException → C (skip B, same dimensions)', () => {
@@ -196,8 +200,7 @@ describe('nextCascadeStep', () => {
     expect(nextCascadeStep('B', 'imageException')).toBe('C')
   })
 
-  it('C + any error → failed', () => {
-    expect(nextCascadeStep('C', 'sendFailed')).toBe('failed')
+  it('C + imageException or imageToGray4Failed → failed', () => {
     expect(nextCascadeStep('C', 'imageException')).toBe('failed')
     expect(nextCascadeStep('C', 'imageToGray4Failed')).toBe('failed')
   })
