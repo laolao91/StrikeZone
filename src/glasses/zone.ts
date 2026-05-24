@@ -17,7 +17,7 @@ export const CASCADE_CONFIG = {
 export function nextCascadeStep(current: CascadeStep, sdkResult: string): NextStep {
   switch (sdkResult) {
     case 'sendFailed':
-      // C is larger than B in 4-bit format, so if B already sendFailed, C will too.
+      // C (~1.4 KB) is smaller than B (~1.5 KB), so a sendFailed at B is a BLE problem, not a size problem.
       return current === 'A' ? 'B' : 'failed'
     case 'imageException':
     case 'imageToGray4Failed':

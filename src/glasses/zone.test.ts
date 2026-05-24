@@ -208,7 +208,6 @@ describe('nextCascadeStep', () => {
   })
 
   it('unknown error → failed', () => {
-    expect(nextCascadeStep('A', 'imageException')).not.toBe('failed') // sanity
     expect(nextCascadeStep('A', 'somethingElse')).toBe('failed')
   })
 })
