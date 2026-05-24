@@ -234,6 +234,11 @@ describe('renderZoneImage', () => {
     expect(b64.length).toBeLessThan(1600)
   })
 
+  it('step A starts with PNG and uses bit_depth=1', () => {
+    const bin = atob(renderZoneImage(0, 2.5, 3.5, 1.5, 'A'))
+    expect(bin.charCodeAt(24)).toBe(1) // bit_depth
+  })
+
   it('step C starts with PNG and uses bit_depth=4', () => {
     const bin = atob(renderZoneImage(0, 2.5, 3.5, 1.5, 'C'))
     expect(bin.charCodeAt(24)).toBe(4) // bit_depth
@@ -271,7 +276,7 @@ describe('formatZoneDiagnostic', () => {
       [{ step: 'C', b64Chars: 1436, result: 'imageException' }],
       true,
     )
-    expect(result).toContain('ALL FAILED')
+    expect(result).toBe('ZONE-DBG\nC:40x48 4b\n 1436chr imageException\nALL FAILED')
   })
 
   it('does not append ALL FAILED when allFailed is false', () => {

@@ -232,9 +232,6 @@ export function renderZoneText(
   return [label, TOP, row(0), DIV, row(1), DIV, row(2), BOT].join('\n')
 }
 
-// ── Strike zone PNG renderer ──────────────────────────────────────────────────
-// Uses encodePNG1bit for a ~3.1 KB payload at 120×144, within the BLE limit.
-
 // ── Shared zone drawing ───────────────────────────────────────────────────────
 // Returns a Uint8Array of pixels (0=black, 255=white) for the given dimensions.
 
