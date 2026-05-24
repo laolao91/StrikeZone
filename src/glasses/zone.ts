@@ -300,6 +300,18 @@ function drawZonePixels(
   return pixels
 }
 
+// Renders the zone image for the given cascade step — picks encoder and dimensions from CASCADE_CONFIG.
+export function renderZoneImage(
+  pX: number, pZ: number, szTop: number, szBot: number,
+  step: CascadeStep,
+): string {
+  const { width, height, bitDepth } = CASCADE_CONFIG[step]
+  const pixels = drawZonePixels(pX, pZ, szTop, szBot, width, height)
+  return bitDepth === 1
+    ? encodePNG1bit(pixels, width, height)
+    : encodePNG4bit(pixels, width, height)
+}
+
 export function renderZoneBlank(width: number, height: number): string {
   return encodePNG1bit(new Uint8Array(width * height), width, height)
 }
@@ -321,4 +333,26 @@ export function renderZoneCanvasRaw(
   width: number, height: number
 ): number[] {
   return Array.from(drawZonePixels(pX, pZ, szTop, szBot, width, height), v => v ? 15 : 0)
+}
+
+// ── Cascade diagnostic formatter ──────────────────────────────────────────────
+
+export interface AttemptLog {
+  step: CascadeStep
+  b64Chars: number
+  result: string
+}
+
+// Produces the SPLITS column diagnostic text during and after a cascade probe.
+// Each attempt occupies two lines: "X:WxH Nb" then " NNNNchr <sdkResult>".
+// Appends "ALL FAILED" on the final line when allFailed is true.
+export function formatZoneDiagnostic(attempts: AttemptLog[], allFailed: boolean): string {
+  const lines = ['ZONE-DBG']
+  for (const a of attempts) {
+    const { width, height, bitDepth } = CASCADE_CONFIG[a.step]
+    lines.push(`${a.step}:${width}x${height} ${bitDepth}b`)
+    lines.push(` ${a.b64Chars}chr ${a.result}`)
+  }
+  if (allFailed) lines.push('ALL FAILED')
+  return lines.join('\n')
 }

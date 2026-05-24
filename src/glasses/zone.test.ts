@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getDotPosition, renderZoneText, renderZoneCanvas, renderZoneBlank,
-  encodePNG4bit, nextCascadeStep,
+  encodePNG4bit, nextCascadeStep, renderZoneImage, formatZoneDiagnostic,
 } from './zone'
 
 const SZ_TOP = 3.5
@@ -209,5 +209,76 @@ describe('nextCascadeStep', () => {
 
   it('unknown error → failed', () => {
     expect(nextCascadeStep('A', 'somethingElse')).toBe('failed')
+  })
+})
+
+describe('renderZoneImage', () => {
+  it('step A returns valid base64 at correct length for 120×144 1-bit', () => {
+    const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'A')
+    expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
+    expect(b64.length).toBeGreaterThan(3000)
+    expect(b64.length).toBeLessThan(3500)
+  })
+
+  it('step B returns valid base64 at correct length for 80×96 1-bit', () => {
+    const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'B')
+    expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
+    expect(b64.length).toBeGreaterThan(1300)
+    expect(b64.length).toBeLessThan(1700)
+  })
+
+  it('step C returns valid base64 at correct length for 40×48 4-bit', () => {
+    const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'C')
+    expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
+    expect(b64.length).toBeGreaterThan(1200)
+    expect(b64.length).toBeLessThan(1600)
+  })
+
+  it('step C starts with PNG and uses bit_depth=4', () => {
+    const bin = atob(renderZoneImage(0, 2.5, 3.5, 1.5, 'C'))
+    expect(bin.charCodeAt(24)).toBe(4) // bit_depth
+  })
+})
+
+describe('formatZoneDiagnostic', () => {
+  it('starts with ZONE-DBG header', () => {
+    expect(formatZoneDiagnostic([], false)).toBe('ZONE-DBG')
+  })
+
+  it('formats a single sendFailed attempt correctly', () => {
+    const result = formatZoneDiagnostic(
+      [{ step: 'A', b64Chars: 3164, result: 'sendFailed' }],
+      false,
+    )
+    expect(result).toBe('ZONE-DBG\nA:120x144 1b\n 3164chr sendFailed')
+  })
+
+  it('formats multiple attempts', () => {
+    const result = formatZoneDiagnostic(
+      [
+        { step: 'A', b64Chars: 3164, result: 'sendFailed' },
+        { step: 'B', b64Chars: 1500, result: 'imageException' },
+      ],
+      false,
+    )
+    expect(result).toBe(
+      'ZONE-DBG\nA:120x144 1b\n 3164chr sendFailed\nB:80x96 1b\n 1500chr imageException'
+    )
+  })
+
+  it('appends ALL FAILED when allFailed is true', () => {
+    const result = formatZoneDiagnostic(
+      [{ step: 'C', b64Chars: 1436, result: 'imageException' }],
+      true,
+    )
+    expect(result).toContain('ALL FAILED')
+  })
+
+  it('does not append ALL FAILED when allFailed is false', () => {
+    const result = formatZoneDiagnostic(
+      [{ step: 'A', b64Chars: 3164, result: 'sendFailed' }],
+      false,
+    )
+    expect(result).not.toContain('ALL FAILED')
   })
 })
