@@ -34,7 +34,6 @@ import {
   renderStateScreen,
 } from './glasses/display'
 import {
-  renderZoneText,
   renderZoneImage,
   nextCascadeStep,
   formatZoneDiagnostic,
@@ -155,8 +154,7 @@ async function renderPitch(
   await upgradeText(HDR_ID, HDR_NAME, header)
 
   if (cascadeAllFailed) {
-    const label = renderZoneText(pX, pZ, szTop, szBot).split('\n')[0]
-    await upgradeText(INFO_ID,   INFO_NAME,   `${label}\n${info}`)
+    await upgradeText(INFO_ID,   INFO_NAME,   formatZoneDiagnostic(cascadeAttempts, true))
     await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, true))
     return
   }
@@ -191,7 +189,8 @@ async function runCascade(
     if (result === 'imageSizeInvalid') {
       // Stale container — rebuild then retry once
       cascadeAttempts.push({ step, b64Chars: b64.length, result: 'imageSizeInvalid' })
-      await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
+      await upgradeText(INFO_ID,   INFO_NAME,   formatZoneDiagnostic(cascadeAttempts, false))
+      await upgradeText(SPLITS_ID, SPLITS_NAME, '')
       await bridge.rebuildPageContainer(new RebuildPageContainer(
         zoneContainerPayload(step, header, '', '')
       ))
@@ -206,7 +205,8 @@ async function runCascade(
         await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
         return
       }
-      await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
+      await upgradeText(INFO_ID,   INFO_NAME,   formatZoneDiagnostic(cascadeAttempts, false))
+      await upgradeText(SPLITS_ID, SPLITS_NAME, '')
       const next = nextCascadeStep(step, result2 === 'imageSizeInvalid' ? 'imageException' : result2)
       if (next === 'failed' || next === 'resize') break
       step = next
@@ -231,7 +231,8 @@ async function runCascade(
       return
     }
 
-    await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
+    await upgradeText(INFO_ID,   INFO_NAME,   formatZoneDiagnostic(cascadeAttempts, false))
+    await upgradeText(SPLITS_ID, SPLITS_NAME, '')
 
     const next = nextCascadeStep(step, result)
     if (next === 'failed' || next === 'resize') break
@@ -240,8 +241,7 @@ async function runCascade(
 
   cascadeAllFailed = true
   cascadeProbed    = true
-  const label = renderZoneText(pX, pZ, szTop, szBot).split('\n')[0]
-  await upgradeText(INFO_ID,   INFO_NAME,   `${label}\n${info}`)
+  await upgradeText(INFO_ID,   INFO_NAME,   formatZoneDiagnostic(cascadeAttempts, true))
   await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, true))
 }
 
