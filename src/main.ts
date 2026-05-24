@@ -184,6 +184,8 @@ async function runCascade(
 
     if (result === 'imageSizeInvalid') {
       // Stale container — rebuild then retry once
+      cascadeAttempts.push({ step, b64Chars: b64.length, result: 'imageSizeInvalid' })
+      await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
       await bridge.rebuildPageContainer(new RebuildPageContainer(
         zoneContainerPayload(step, header, '', '')
       ))
@@ -198,6 +200,7 @@ async function runCascade(
         await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
         return
       }
+      await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
       const next = nextCascadeStep(step, result2 === 'imageSizeInvalid' ? 'imageException' : result2)
       if (next === 'failed' || next === 'resize') break
       step = next
