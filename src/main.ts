@@ -1,8 +1,11 @@
 import {
   waitForEvenAppBridge,
   CreateStartUpPageContainer,
+  RebuildPageContainer,
   TextContainerProperty,
   TextContainerUpgrade,
+  ImageContainerProperty,
+  ImageRawDataUpdate,
 } from '@evenrealities/even_hub_sdk'
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { initStorage } from './lib/storage'
@@ -30,28 +33,28 @@ import {
   renderGameList,
   renderStateScreen,
 } from './glasses/display'
-import { renderZoneText } from './glasses/zone'
+import {
+  renderZoneText,
+  renderZoneImage,
+  nextCascadeStep,
+  formatZoneDiagnostic,
+  CASCADE_CONFIG,
+} from './glasses/zone'
+import type { CascadeStep, AttemptLog } from './glasses/zone'
 import { setupInput } from './glasses/input'
 import { initSettingsPage } from './settings/settings-mount'
 
 // ── Container IDs ────────────────────────────────────────────────────────────
 //
-// All four containers are text — no image container.
-// BLE sendFailed at every image size we tried; text updates are ~100 bytes
-// and never hit the BLE limit.
-//
-//   HDR    (full-width 2-line header, top)
-//   ZONE   (text, left column — ASCII 3×3 strike zone grid)
+//   HDR    (text, full-width 2-line header, top)
+//   ZONE   (image, left column — 1-bit or 4-bit PNG strike zone)
 //   INFO   (text, centre column, event capture)
-//   SPLITS (text, right column)
+//   SPLITS (text, right column — shows cascade diagnostic during probe)
 
 const HDR_ID    = 1,  HDR_NAME    = 'hdr'
 const ZONE_ID   = 2,  ZONE_NAME   = 'zone'
 const INFO_ID   = 3,  INFO_NAME   = 'info'
 const SPLITS_ID = 4,  SPLITS_NAME = 'splits'
-
-const ZONE_W = 120
-const ZONE_H = 144
 
 // Pixels from top of screen to the zone/info/splits row
 const HEADER_H = 36
@@ -59,14 +62,62 @@ const HEADER_H = 36
 let bridge: EvenAppBridge | null = null
 let displayInFlight = false
 
-// ── Layout geometry (computed once) ─────────────────────────────────────────
+// ── Image cascade state ───────────────────────────────────────────────────────
+// Probed once on the first pitch render; cached for the session.
+let cascadeProbed    = false
+let cascadeWorking: CascadeStep = 'A'
+let cascadeAllFailed = false
+let cascadeAttempts: AttemptLog[] = []
 
-const INFO_X   = ZONE_W + 2
-const INFO_W   = Math.floor((576 - INFO_X - 2) / 2)
-const SPLITS_X = INFO_X + INFO_W + 2
-const SPLITS_W = 576 - SPLITS_X
+// Geometry depends on the zone image width; SPLITS is always pinned at x=350.
+function zoneGeometry(zoneW: number) {
+  const infoX   = zoneW + 2
+  const splitsX = 350
+  const infoW   = splitsX - infoX - 2
+  const splitsW = 576 - splitsX
+  return { infoX, infoW, splitsX, splitsW }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Builds the full page container payload for the given cascade step.
+// Used at startup (step A) and on re-layout (step B or C).
+function zoneContainerPayload(step: CascadeStep, hdrContent: string, infoContent: string, splitsContent: string) {
+  const cfg = CASCADE_CONFIG[step]
+  const geo = zoneGeometry(cfg.width)
+  return {
+    containerTotalNum: 4,
+    textObject: [
+      new TextContainerProperty({
+        xPosition: 0, yPosition: 0, width: 576, height: HEADER_H,
+        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+        containerID: HDR_ID, containerName: HDR_NAME,
+        content: hdrContent, isEventCapture: 0,
+      }),
+      new TextContainerProperty({
+        xPosition: geo.infoX, yPosition: HEADER_H,
+        width: geo.infoW, height: 288 - HEADER_H,
+        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+        containerID: INFO_ID, containerName: INFO_NAME,
+        content: infoContent, isEventCapture: 1,
+      }),
+      new TextContainerProperty({
+        xPosition: geo.splitsX, yPosition: HEADER_H,
+        width: geo.splitsW, height: 288 - HEADER_H,
+        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
+        containerID: SPLITS_ID, containerName: SPLITS_NAME,
+        content: splitsContent, isEventCapture: 0,
+      }),
+    ],
+    imageObject: [
+      new ImageContainerProperty({
+        xPosition: 0, yPosition: HEADER_H,
+        width: cfg.width, height: cfg.height,
+        containerID: ZONE_ID, containerName: ZONE_NAME,
+      }),
+    ],
+  }
+}
 
 async function upgradeText(id: number, name: string, content: string): Promise<void> {
   await bridge!.textContainerUpgrade(new TextContainerUpgrade({
@@ -80,22 +131,109 @@ async function upgradeText(id: number, name: string, content: string): Promise<v
 async function renderStandard(header: string, body: string): Promise<void> {
   if (!bridge) return
   await upgradeText(HDR_ID,    HDR_NAME,    header)
-  await upgradeText(ZONE_ID,   ZONE_NAME,   '')
+  // ZONE is an image container — leave it showing last pitch or blank
   await upgradeText(INFO_ID,   INFO_NAME,   body)
   await upgradeText(SPLITS_ID, SPLITS_NAME, '')
 }
 
 async function renderPitch(
   header: string,
-  zone: string,
+  pX: number,
+  pZ: number,
+  szTop: number,
+  szBot: number,
   info: string,
   splits: string,
 ): Promise<void> {
   if (!bridge) return
-  await upgradeText(HDR_ID,    HDR_NAME,    header)
-  await upgradeText(ZONE_ID,   ZONE_NAME,   zone)
+  await upgradeText(HDR_ID, HDR_NAME, header)
+
+  if (cascadeAllFailed) {
+    const label = renderZoneText(pX, pZ, szTop, szBot).split('\n')[0]
+    await upgradeText(INFO_ID,   INFO_NAME,   `${label}\n${info}`)
+    await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, true))
+    return
+  }
+
+  if (!cascadeProbed) {
+    await runCascade(header, pX, pZ, szTop, szBot, info)
+    return
+  }
+
+  const b64 = renderZoneImage(pX, pZ, szTop, szBot, cascadeWorking)
+  await bridge.updateImageRawData(new ImageRawDataUpdate({
+    containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+  }))
   await upgradeText(INFO_ID,   INFO_NAME,   info)
   await upgradeText(SPLITS_ID, SPLITS_NAME, splits)
+}
+
+async function runCascade(
+  header: string,
+  pX: number, pZ: number, szTop: number, szBot: number,
+  info: string,
+): Promise<void> {
+  if (!bridge) return
+  let step: CascadeStep = 'A'
+
+  while (true) {
+    const b64 = renderZoneImage(pX, pZ, szTop, szBot, step)
+    const result = await bridge.updateImageRawData(new ImageRawDataUpdate({
+      containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+    }))
+
+    if (result === 'imageSizeInvalid') {
+      // Stale container — rebuild then retry once
+      await bridge.rebuildPageContainer(new RebuildPageContainer(
+        zoneContainerPayload(step, header, '', '')
+      ))
+      const result2 = await bridge.updateImageRawData(new ImageRawDataUpdate({
+        containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+      }))
+      cascadeAttempts.push({ step, b64Chars: b64.length, result: result2 })
+      if (result2 === 'success') {
+        cascadeWorking = step
+        cascadeProbed  = true
+        await upgradeText(INFO_ID,   INFO_NAME,   info)
+        await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
+        return
+      }
+      const next = nextCascadeStep(step, result2 === 'imageSizeInvalid' ? 'imageException' : result2)
+      if (next === 'failed' || next === 'resize') break
+      step = next
+      continue
+    }
+
+    cascadeAttempts.push({ step, b64Chars: b64.length, result })
+
+    if (result === 'success') {
+      if (step !== 'A') {
+        await bridge.rebuildPageContainer(new RebuildPageContainer(
+          zoneContainerPayload(step, header, '', '')
+        ))
+        await bridge.updateImageRawData(new ImageRawDataUpdate({
+          containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+        }))
+      }
+      cascadeWorking = step
+      cascadeProbed  = true
+      await upgradeText(INFO_ID,   INFO_NAME,   info)
+      await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
+      return
+    }
+
+    await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, false))
+
+    const next = nextCascadeStep(step, result)
+    if (next === 'failed' || next === 'resize') break
+    step = next
+  }
+
+  cascadeAllFailed = true
+  cascadeProbed    = true
+  const label = renderZoneText(pX, pZ, szTop, szBot).split('\n')[0]
+  await upgradeText(INFO_ID,   INFO_NAME,   `${label}\n${info}`)
+  await upgradeText(SPLITS_ID, SPLITS_NAME, formatZoneDiagnostic(cascadeAttempts, true))
 }
 
 // ── Display logic ─────────────────────────────────────────────────────────────
@@ -158,21 +296,20 @@ async function _refreshDisplay(): Promise<void> {
     return
   }
 
-  const pitchIndex = s.pitchHistoryIndex !== null ? s.pitchHistoryIndex + 1 : null
-  const zone       = renderZoneText(pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot)
-  const splits     = renderSplitsInfo(atBat, game, s.matchupStats)
+  const pitchIndex  = s.pitchHistoryIndex !== null ? s.pitchHistoryIndex + 1 : null
+  const splits = renderSplitsInfo(atBat, game, s.matchupStats)
 
   if (pitch.isContact) {
     await renderPitch(
       renderPitchHeader(game, atBat),
-      zone,
+      pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot,
       renderContactInfo(atBat, pitch),
       splits,
     )
   } else {
     await renderPitch(
       renderPitchHeader(game, atBat),
-      zone,
+      pitch.pX, pitch.pZ, pitch.szTop, pitch.szBot,
       renderPitchInfo(atBat, pitch, pitchIndex, atBat.pitches.length),
       splits,
     )
@@ -185,38 +322,9 @@ async function startGlassesMode(b: EvenAppBridge): Promise<void> {
   bridge = b
   initStorage(b)
 
-  await b.createStartUpPageContainer(new CreateStartUpPageContainer({
-    containerTotalNum: 4,
-    textObject: [
-      new TextContainerProperty({
-        xPosition: 0, yPosition: 0, width: 576, height: HEADER_H,
-        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-        containerID: HDR_ID, containerName: HDR_NAME,
-        content: 'StrikeZone', isEventCapture: 0,
-      }),
-      new TextContainerProperty({
-        xPosition: 0, yPosition: HEADER_H,
-        width: ZONE_W, height: ZONE_H,
-        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 1,
-        containerID: ZONE_ID, containerName: ZONE_NAME,
-        content: '', isEventCapture: 0,
-      }),
-      new TextContainerProperty({
-        xPosition: INFO_X, yPosition: HEADER_H,
-        width: INFO_W, height: 288 - HEADER_H,
-        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-        containerID: INFO_ID, containerName: INFO_NAME,
-        content: renderStateScreen('loading'), isEventCapture: 1,
-      }),
-      new TextContainerProperty({
-        xPosition: SPLITS_X, yPosition: HEADER_H,
-        width: SPLITS_W, height: 288 - HEADER_H,
-        borderWidth: 0, borderColor: 0, borderRadius: 0, paddingLength: 4,
-        containerID: SPLITS_ID, containerName: SPLITS_NAME,
-        content: '', isEventCapture: 0,
-      }),
-    ],
-  }))
+  await b.createStartUpPageContainer(new CreateStartUpPageContainer(
+    zoneContainerPayload('A', 'StrikeZone', '', '')
+  ))
 
   onUpdate(() => { refreshDisplay() })
 
