@@ -50,6 +50,7 @@ export function getDotPosition(
 // encodePNG1bit — 1-bit greyscale (8 pixels/byte); same 120×144 image is
 //                 only ~3.1 KB base64, within the BLE send limit.
 //                 The zone is pure black/white so there is no quality loss.
+// encodePNG4bit — 4-bit greyscale (2 pixels/byte); 40×48 is ~1.4 KB base64.
 
 function adler32(data: Uint8Array): number {
   let s1 = 1, s2 = 0
