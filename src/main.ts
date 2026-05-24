@@ -126,6 +126,12 @@ async function upgradeText(id: number, name: string, content: string): Promise<v
   }))
 }
 
+// SDK base64 path is broken (sendFailed even at <400 bytes). Send raw PNG bytes as
+// number[] instead — the same approach Visionote uses successfully.
+function pngBytes(b64: string): number[] {
+  return Array.from(atob(b64), c => c.charCodeAt(0))
+}
+
 // ── Display functions ─────────────────────────────────────────────────────────
 
 async function renderStandard(header: string, body: string): Promise<void> {
@@ -162,7 +168,7 @@ async function renderPitch(
 
   const b64 = renderZoneImage(pX, pZ, szTop, szBot, cascadeWorking)
   await bridge.updateImageRawData(new ImageRawDataUpdate({
-    containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+    containerID: ZONE_ID, containerName: ZONE_NAME, imageData: pngBytes(b64),
   }))
   await upgradeText(INFO_ID,   INFO_NAME,   info)
   await upgradeText(SPLITS_ID, SPLITS_NAME, splits)
@@ -179,7 +185,7 @@ async function runCascade(
   while (true) {
     const b64 = renderZoneImage(pX, pZ, szTop, szBot, step)
     const result = await bridge.updateImageRawData(new ImageRawDataUpdate({
-      containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+      containerID: ZONE_ID, containerName: ZONE_NAME, imageData: pngBytes(b64),
     }))
 
     if (result === 'imageSizeInvalid') {
@@ -190,7 +196,7 @@ async function runCascade(
         zoneContainerPayload(step, header, '', '')
       ))
       const result2 = await bridge.updateImageRawData(new ImageRawDataUpdate({
-        containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+        containerID: ZONE_ID, containerName: ZONE_NAME, imageData: pngBytes(b64),
       }))
       cascadeAttempts.push({ step, b64Chars: b64.length, result: result2 })
       if (result2 === 'success') {
@@ -215,7 +221,7 @@ async function runCascade(
           zoneContainerPayload(step, header, '', '')
         ))
         await bridge.updateImageRawData(new ImageRawDataUpdate({
-          containerID: ZONE_ID, containerName: ZONE_NAME, imageData: b64,
+          containerID: ZONE_ID, containerName: ZONE_NAME, imageData: pngBytes(b64),
         }))
       }
       cascadeWorking = step
