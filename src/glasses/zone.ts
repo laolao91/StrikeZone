@@ -40,17 +40,16 @@ export function getDotPosition(
   }
 }
 
-// ── Minimal pure-JS PNG encoder ───────────────────────────────────────────────
-// Produces an 8-bit greyscale PNG (colour type 0) with no canvas, no DOM.
-// Canvas was the original approach but canvas.toDataURL() on hardware
-// (iOS WKWebView) returns a corrupt/empty result, and getImageData() may
-// return zeroed data under fingerprinting protection.  Generating the PNG
-// entirely in JS bypasses both restrictions.
+// ── Pure-JS PNG encoders ──────────────────────────────────────────────────────
+// No canvas, no DOM — canvas.toDataURL() on iOS WKWebView hardware returns
+// corrupt/empty data, and CompressionStream hangs indefinitely in WKWebView
+// blocking the displayInFlight guard.  We generate PNG entirely in JS using
+// uncompressed DEFLATE stored blocks (BTYPE=00).
 //
-// Compression: CompressionStream was tried but hangs indefinitely in some
-// WKWebView runtimes, permanently blocking the displayInFlight guard.
-// Instead we use uncompressed DEFLATE stored blocks (BTYPE=00) and keep
-// the image at 60×72 px so the file is ~6 KB base64 — under the BLE limit.
+// encodePNG     — 8-bit greyscale (kept for reference; ~23 KB at 120×144)
+// encodePNG1bit — 1-bit greyscale (8 pixels/byte); same 120×144 image is
+//                 only ~3.1 KB base64, within the BLE send limit.
+//                 The zone is pure black/white so there is no quality loss.
 
 function adler32(data: Uint8Array): number {
   let s1 = 1, s2 = 0
@@ -87,19 +86,26 @@ function pngChunk(type: string, data: number[]): number[] {
   return [...u32be(data.length), ...typeBytes, ...data, ...u32be(crc32(payload))]
 }
 
-function encodePNG(pixels: Uint8Array, width: number, height: number): string {
-  // Filter byte 0 (None) prepended to each row
-  const raw = new Uint8Array(height * (1 + width))
+
+// 1-bit greyscale PNG: rowBytes = ceil(width/8), pixels packed MSB-first.
+// Any non-zero pixel value becomes white (1); zero stays black (0).
+// At 120×144: raw = 144×16 = 2,304 bytes → ~3,164 bytes base64 ≈ 3.1 KB.
+function encodePNG1bit(pixels: Uint8Array, width: number, height: number): string {
+  const rowBytes = Math.ceil(width / 8)
+  const raw = new Uint8Array(height * (1 + rowBytes))
+
   for (let y = 0; y < height; y++) {
-    raw[y * (1 + width)] = 0
-    raw.set(pixels.subarray(y * width, (y + 1) * width), y * (1 + width) + 1)
+    raw[y * (1 + rowBytes)] = 0  // filter byte = None
+    for (let x = 0; x < width; x++) {
+      if (pixels[y * width + x])
+        raw[y * (1 + rowBytes) + 1 + Math.floor(x / 8)] |= (0x80 >> (x % 8))
+    }
   }
 
-  // Uncompressed DEFLATE stored blocks (BTYPE=00)
   const blocks: number[] = []
   const BLOCK = 65535
   for (let offset = 0; offset < raw.length; offset += BLOCK) {
-    const chunk  = raw.subarray(offset, Math.min(offset + BLOCK, raw.length))
+    const chunk = raw.subarray(offset, Math.min(offset + BLOCK, raw.length))
     const isFinal = (offset + BLOCK >= raw.length) ? 1 : 0
     const len = chunk.length
     blocks.push(isFinal, len & 0xff, (len >> 8) & 0xff, (~len) & 0xff, (~len >> 8) & 0xff)
@@ -109,8 +115,8 @@ function encodePNG(pixels: Uint8Array, width: number, height: number): string {
   const zlib = [0x78, 0x01, ...blocks, ...u32be(adler)]
 
   const png = [
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
-    ...pngChunk('IHDR', [...u32be(width), ...u32be(height), 8, 0, 0, 0, 0]), // 8-bit greyscale
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...pngChunk('IHDR', [...u32be(width), ...u32be(height), 1, 0, 0, 0, 0]),  // bit_depth=1
     ...pngChunk('IDAT', zlib),
     ...pngChunk('IEND', []),
   ]
@@ -120,13 +126,51 @@ function encodePNG(pixels: Uint8Array, width: number, height: number): string {
   return btoa(bin)
 }
 
-// ── Text-based strike zone (replaces image approach) ─────────────────────────
+// 4-bit greyscale PNG: rowBytes = ceil(width/2), two pixels packed per byte (high << 4 | low).
+// Non-zero pixel → 0xF (white); zero → 0x0 (black). IHDR bit_depth=4, colortype=0.
+// At 40×48: raw = 48×21 = 1,008 bytes → ~1,436 base64 chars ≈ 1.4 KB.
+export function encodePNG4bit(pixels: Uint8Array, width: number, height: number): string {
+  const rowBytes = Math.ceil(width / 2)
+  const raw = new Uint8Array(height * (1 + rowBytes))
+
+  for (let y = 0; y < height; y++) {
+    raw[y * (1 + rowBytes)] = 0  // filter byte = None
+    for (let x = 0; x < width; x += 2) {
+      const p0 = pixels[y * width + x] ? 0xF : 0x0
+      const p1 = (x + 1 < width && pixels[y * width + x + 1]) ? 0xF : 0x0
+      raw[y * (1 + rowBytes) + 1 + (x >> 1)] = (p0 << 4) | p1
+    }
+  }
+
+  const blocks: number[] = []
+  const BLOCK = 65535
+  for (let offset = 0; offset < raw.length; offset += BLOCK) {
+    const chunk = raw.subarray(offset, Math.min(offset + BLOCK, raw.length))
+    const isFinal = (offset + BLOCK >= raw.length) ? 1 : 0
+    const len = chunk.length
+    blocks.push(isFinal, len & 0xff, (len >> 8) & 0xff, (~len) & 0xff, (~len >> 8) & 0xff)
+    for (let i = 0; i < chunk.length; i++) blocks.push(chunk[i])
+  }
+  const adler = adler32(raw)
+  const zlib = [0x78, 0x01, ...blocks, ...u32be(adler)]
+
+  const png = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...pngChunk('IHDR', [...u32be(width), ...u32be(height), 4, 0, 0, 0, 0]),
+    ...pngChunk('IDAT', zlib),
+    ...pngChunk('IEND', []),
+  ]
+
+  let bin = ''
+  for (const b of png) bin += String.fromCharCode(b)
+  return btoa(bin)
+}
+
+// ── Text-based strike zone ────────────────────────────────────────────────────
 //
-// Draws a 3×3 ASCII grid using getDotPosition() output.  A textContainerUpgrade
-// is ~100 bytes and never fails due to BLE size limits, unlike PNG images.
-//
-// In-zone:    dot placed in the correct cell
-// Out-of-zone: empty grid + direction indicator (▲ ▼ ◄ ►) outside the box
+// 8-line output: position label + 3×3 box-drawing grid (1 row per cell).
+// Label encodes vertical (Hi/Md/Lo/↑/↓) and horizontal (L/M/R/◄/►) position.
+// In-zone pitches show ● in the matching cell; out-of-zone show an empty grid.
 
 export function renderZoneText(
   pX: number,
@@ -136,36 +180,43 @@ export function renderZoneText(
 ): string {
   const pos = getDotPosition(pX, pZ, szTop, szBot)
 
-  const g = [[' ',' ',' '],[' ',' ',' '],[' ',' ',' ']]
-  if (pos.inZone) g[pos.row][pos.col] = '●'
+  const vStr = (v: 'above' | 'below' | 0 | 1 | 2): string =>
+    v === 'above' ? '↑' : v === 'below' ? '↓' : v === 0 ? 'Hi' : v === 1 ? 'Md' : 'Lo'
+  const hStr = (h: 'left' | 'right' | 0 | 1 | 2): string =>
+    h === 'left' ? '◄' : h === 'right' ? '►' : h === 0 ? 'L' : h === 1 ? 'M' : 'R'
 
-  const div = '+-+-+-+'
-  const row = (r: number) => `|${g[r][0]}|${g[r][1]}|${g[r][2]}|`
-  const lines: string[] = []
+  const label = pos.inZone
+    ? `${vStr(pos.row)}/${hStr(pos.col)}`
+    : `${vStr(pos.vPos)}/${hStr(pos.hPos)}`
 
-  if (!pos.inZone && pos.vPos === 'above') lines.push('  ▲')
-  lines.push(div)
-  for (let r = 0; r < 3; r++) { lines.push(row(r)); lines.push(div) }
+  const TOP = '┌─┬─┬─┐'
+  const DIV = '├─┼─┼─┤'
+  const BOT = '└─┴─┴─┘'
 
-  const after = (!pos.inZone && pos.vPos === 'below' ? '▼' : '')
-              + (!pos.inZone && pos.hPos === 'left'  ? '◄' : '')
-              + (!pos.inZone && pos.hPos === 'right' ? '►' : '')
-  if (after) lines.push(' ' + after)
+  const row = (r: 0 | 1 | 2): string => {
+    const c = (col: 0 | 1 | 2) =>
+      pos.inZone && pos.row === r && pos.col === col ? '●' : ' '
+    return `│${c(0)}│${c(1)}│${c(2)}│`
+  }
 
-  return lines.join('\n')
+  return [label, TOP, row(0), DIV, row(1), DIV, row(2), BOT].join('\n')
 }
 
-// ── Strike zone PNG renderer (kept for reference / future phone use) ──────────
+// ── Strike zone PNG renderer ──────────────────────────────────────────────────
+// Uses encodePNG1bit for a ~3.1 KB payload at 120×144, within the BLE limit.
 
-export function renderZoneCanvas(
+// ── Shared zone drawing ───────────────────────────────────────────────────────
+// Returns a Uint8Array of pixels (0=black, 255=white) for the given dimensions.
+
+function drawZonePixels(
   pX: number,
   pZ: number,
   szTop: number,
   szBot: number,
   width: number,
   height: number
-): string {
-  const pixels = new Uint8Array(width * height) // 0 = black/transparent
+): Uint8Array {
+  const pixels = new Uint8Array(width * height)
 
   function set(x: number, y: number): void {
     const xi = Math.round(x), yi = Math.round(y)
@@ -193,15 +244,11 @@ export function renderZoneCanvas(
   const innerW = width  - 2 * margin
   const innerH = height - 2 * margin
 
-  function toX(x: number): number {
-    return margin + ((x - IMG_X_MIN) / (IMG_X_MAX - IMG_X_MIN)) * innerW
-  }
-  function toZ(z: number): number {
-    return margin + ((IMG_Z_MAX - z) / (IMG_Z_MAX - IMG_Z_MIN)) * innerH
-  }
+  const toX = (x: number) => margin + ((x - IMG_X_MIN) / (IMG_X_MAX - IMG_X_MIN)) * innerW
+  const toZ = (z: number) => margin + ((IMG_Z_MAX - z) / (IMG_Z_MAX - IMG_Z_MIN)) * innerH
 
-  const zx0 = toX(ZONE_LEFT),  zx1 = toX(ZONE_RIGHT)
-  const zy0 = toZ(szTop),       zy1 = toZ(szBot)
+  const zx0 = toX(ZONE_LEFT), zx1 = toX(ZONE_RIGHT)
+  const zy0 = toZ(szTop),      zy1 = toZ(szBot)
 
   hLine(zx0, zx1, zy0, 2)
   hLine(zx0, zx1, zy1, 2)
@@ -220,5 +267,28 @@ export function renderZoneCanvas(
   const r = Math.max(2, Math.round(Math.min(width, height) * 0.05))
   disc(toX(pX), toZ(pZ), r)
 
-  return encodePNG(pixels, width, height)
+  return pixels
+}
+
+export function renderZoneBlank(width: number, height: number): string {
+  return encodePNG1bit(new Uint8Array(width * height), width, height)
+}
+
+// PNG base64 variant (kept; sendFailed on current SDK/hardware).
+export function renderZoneCanvas(
+  pX: number, pZ: number, szTop: number, szBot: number,
+  width: number, height: number
+): string {
+  return encodePNG1bit(drawZonePixels(pX, pZ, szTop, szBot, width, height), width, height)
+}
+
+// 4-bit greyscale number[] — values 0 (black) or 15 (white).
+// Matches the format used by flappy-g2 / demo-app-g2 which successfully call
+// updateImageRawData.  The SDK's base64 decode path returns sendFailed; this
+// number[] path bypasses it entirely.
+export function renderZoneCanvasRaw(
+  pX: number, pZ: number, szTop: number, szBot: number,
+  width: number, height: number
+): number[] {
+  return Array.from(drawZonePixels(pX, pZ, szTop, szBot, width, height), v => v ? 15 : 0)
 }
