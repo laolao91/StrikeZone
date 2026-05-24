@@ -3,13 +3,14 @@ const ZONE_RIGHT =  0.83
 
 // ── Cascade types and config ──────────────────────────────────────────────────
 
-export type CascadeStep = 'A' | 'B' | 'C'
+export type CascadeStep = 'A' | 'B' | 'C' | 'D'
 export type NextStep = CascadeStep | 'failed' | 'resize'
 
 export const CASCADE_CONFIG = {
   A: { width: 120, height: 144, bitDepth: 1 as 1 | 4 },
   B: { width:  80, height:  96, bitDepth: 1 as 1 | 4 },
   C: { width:  40, height:  48, bitDepth: 4 as 1 | 4 },
+  D: { width:  40, height:  48, bitDepth: 1 as 1 | 4 },
 } as const
 
 // Returns the next cascade step based on the SDK error string, or 'failed'/'resize'.
@@ -17,12 +18,18 @@ export const CASCADE_CONFIG = {
 export function nextCascadeStep(current: CascadeStep, sdkResult: string): NextStep {
   switch (sdkResult) {
     case 'sendFailed':
-      // A→B→C: each step is smaller (3.1KB→1.1KB→1.0KB binary). Try all three before giving up.
-      return current === 'A' ? 'B' : current === 'B' ? 'C' : 'failed'
+      // A(~1124B)→B(~1124B)→C(~1076B)→D(~356B): step down until one clears BLE.
+      if (current === 'A') return 'B'
+      if (current === 'B') return 'C'
+      if (current === 'C') return 'D'
+      return 'failed'
     case 'imageException':
     case 'imageToGray4Failed':
-      // Skip B if coming from A (same dimensions as A, same format — would also fail).
-      return current === 'C' ? 'failed' : 'C'
+      // Format rejection: skip same-format steps, jump to next different format.
+      // A/B are 1-bit → skip to C (4-bit). C is 4-bit → try D (1-bit, same dims).
+      if (current === 'A' || current === 'B') return 'C'
+      if (current === 'C') return 'D'
+      return 'failed'
     case 'imageSizeInvalid':
       return 'resize'
     default:

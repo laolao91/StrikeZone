@@ -184,11 +184,15 @@ describe('nextCascadeStep', () => {
     expect(nextCascadeStep('B', 'sendFailed')).toBe('C')
   })
 
-  it('C + sendFailed → failed', () => {
-    expect(nextCascadeStep('C', 'sendFailed')).toBe('failed')
+  it('C + sendFailed → D (D is 1-bit same dims, ~356B binary)', () => {
+    expect(nextCascadeStep('C', 'sendFailed')).toBe('D')
   })
 
-  it('A + imageException → C (skip B, same dimensions)', () => {
+  it('D + sendFailed → failed', () => {
+    expect(nextCascadeStep('D', 'sendFailed')).toBe('failed')
+  })
+
+  it('A + imageException → C (skip B, same 1-bit format)', () => {
     expect(nextCascadeStep('A', 'imageException')).toBe('C')
   })
 
@@ -200,9 +204,14 @@ describe('nextCascadeStep', () => {
     expect(nextCascadeStep('B', 'imageException')).toBe('C')
   })
 
-  it('C + imageException or imageToGray4Failed → failed', () => {
-    expect(nextCascadeStep('C', 'imageException')).toBe('failed')
-    expect(nextCascadeStep('C', 'imageToGray4Failed')).toBe('failed')
+  it('C + imageException → D (same dims, try 1-bit)', () => {
+    expect(nextCascadeStep('C', 'imageException')).toBe('D')
+    expect(nextCascadeStep('C', 'imageToGray4Failed')).toBe('D')
+  })
+
+  it('D + imageException → failed', () => {
+    expect(nextCascadeStep('D', 'imageException')).toBe('failed')
+    expect(nextCascadeStep('D', 'imageToGray4Failed')).toBe('failed')
   })
 
   it('imageSizeInvalid → resize (caller handles rebuildPageContainer)', () => {
@@ -245,6 +254,18 @@ describe('renderZoneImage', () => {
   it('step C starts with PNG and uses bit_depth=4', () => {
     const bin = atob(renderZoneImage(0, 2.5, 3.5, 1.5, 'C'))
     expect(bin.charCodeAt(24)).toBe(4) // bit_depth
+  })
+
+  it('step D returns valid base64 at correct length for 40×48 1-bit (~476 chars)', () => {
+    const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'D')
+    expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
+    expect(b64.length).toBeGreaterThan(400)
+    expect(b64.length).toBeLessThan(550)
+  })
+
+  it('step D uses bit_depth=1', () => {
+    const bin = atob(renderZoneImage(0, 2.5, 3.5, 1.5, 'D'))
+    expect(bin.charCodeAt(24)).toBe(1) // bit_depth
   })
 })
 
