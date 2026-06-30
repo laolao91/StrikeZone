@@ -52,8 +52,12 @@ export interface MatchupStats {
 
 export interface AppSettings {
   selectedGamePk: number | null;
+  favoriteTeams: string[];
+  perspective: 'catcher' | 'pitcher';
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   selectedGamePk: null,
+  favoriteTeams: [],
+  perspective: 'catcher',
 };

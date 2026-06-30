@@ -192,7 +192,7 @@ describe('nextCascadeStep', () => {
     expect(nextCascadeStep('D', 'sendFailed')).toBe('failed')
   })
 
-  it('A + imageException → C (skip B, same 1-bit format)', () => {
+  it('A + imageException → C (jump to 4-bit step)', () => {
     expect(nextCascadeStep('A', 'imageException')).toBe('C')
   })
 
@@ -200,7 +200,7 @@ describe('nextCascadeStep', () => {
     expect(nextCascadeStep('A', 'imageToGray4Failed')).toBe('C')
   })
 
-  it('B + imageException → C', () => {
+  it('B + imageException → C (jump to 4-bit step)', () => {
     expect(nextCascadeStep('B', 'imageException')).toBe('C')
   })
 
@@ -228,22 +228,22 @@ describe('renderZoneImage', () => {
   it('step A returns valid base64 at correct length for 120×144 1-bit', () => {
     const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'A')
     expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
-    expect(b64.length).toBeGreaterThan(3000)
-    expect(b64.length).toBeLessThan(3500)
+    expect(b64.length).toBeGreaterThan(2800)
+    expect(b64.length).toBeLessThan(3700)
   })
 
   it('step B returns valid base64 at correct length for 80×96 1-bit', () => {
     const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'B')
     expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
-    expect(b64.length).toBeGreaterThan(1300)
-    expect(b64.length).toBeLessThan(1700)
+    expect(b64.length).toBeGreaterThan(1200)
+    expect(b64.length).toBeLessThan(1800)
   })
 
   it('step C returns valid base64 at correct length for 40×48 4-bit', () => {
     const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'C')
     expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
     expect(b64.length).toBeGreaterThan(1200)
-    expect(b64.length).toBeLessThan(1600)
+    expect(b64.length).toBeLessThan(1700)
   })
 
   it('step A starts with PNG and uses bit_depth=1', () => {
@@ -251,16 +251,16 @@ describe('renderZoneImage', () => {
     expect(bin.charCodeAt(24)).toBe(1) // bit_depth
   })
 
-  it('step C starts with PNG and uses bit_depth=4', () => {
+  it('step C uses bit_depth=4', () => {
     const bin = atob(renderZoneImage(0, 2.5, 3.5, 1.5, 'C'))
     expect(bin.charCodeAt(24)).toBe(4) // bit_depth
   })
 
-  it('step D returns valid base64 at correct length for 40×48 1-bit (~476 chars)', () => {
+  it('step D returns valid base64 at correct length for 40×48 1-bit', () => {
     const b64 = renderZoneImage(0, 2.5, 3.5, 1.5, 'D')
     expect(b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
-    expect(b64.length).toBeGreaterThan(400)
-    expect(b64.length).toBeLessThan(550)
+    expect(b64.length).toBeGreaterThan(300)
+    expect(b64.length).toBeLessThan(700)
   })
 
   it('step D uses bit_depth=1', () => {

@@ -18,15 +18,14 @@ export const CASCADE_CONFIG = {
 export function nextCascadeStep(current: CascadeStep, sdkResult: string): NextStep {
   switch (sdkResult) {
     case 'sendFailed':
-      // A(~1124B)→B(~1124B)→C(~1076B)→D(~356B): step down until one clears BLE.
+      // A(120×144 1b)→B(80×96 1b)→C(40×48 4b)→D(40×48 1b): step down until BLE clears.
       if (current === 'A') return 'B'
       if (current === 'B') return 'C'
       if (current === 'C') return 'D'
       return 'failed'
     case 'imageException':
     case 'imageToGray4Failed':
-      // Format rejection: skip same-format steps, jump to next different format.
-      // A/B are 1-bit → skip to C (4-bit). C is 4-bit → try D (1-bit, same dims).
+      // Format rejection: A/B are 1-bit → jump to C (4-bit). C is 4-bit → try D (1-bit).
       if (current === 'A' || current === 'B') return 'C'
       if (current === 'C') return 'D'
       return 'failed'
@@ -53,7 +52,7 @@ export function getDotPosition(
   szBot: number
 ): DotPosition {
   const colWidth = (ZONE_RIGHT - ZONE_LEFT) / 3
-  const rowHeight = (szTop - szBot) / 3
+  const rowHeight = szTop === szBot ? 1 : (szTop - szBot) / 3
 
   const vOut = pZ > szTop ? 'above' : pZ < szBot ? 'below' : null
   const hOut = pX < ZONE_LEFT ? 'left' : pX > ZONE_RIGHT ? 'right' : null

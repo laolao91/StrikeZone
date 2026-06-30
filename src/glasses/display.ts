@@ -22,19 +22,13 @@ function formatStartTime(isoString: string): string {
 function gameLabel(g: Game): string {
   if (g.gameState === 'Preview') {
     const t = formatStartTime(g.startTime)
-    return t ? `${g.awayTeam} vs ${g.homeTeam}    ${t}` : `${g.awayTeam} vs ${g.homeTeam}`
+    return t ? `${g.awayTeam} vs ${g.homeTeam}    ${t.replace(' ', ' ')}` : `${g.awayTeam} vs ${g.homeTeam}`
   }
   if (g.gameState === 'Delayed') return `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Delayed`
   if (g.gameState === 'Final')   return `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  Final`
   return `${g.awayTeam} ${g.awayScore}-${g.homeScore} ${g.homeTeam}  ${g.inningHalf[0]}${g.inning}`
 }
 
-function centeredWithCursor(label: string, selected: boolean): string {
-  const padded = center(label)
-  if (!selected) return padded
-  if (padded.startsWith(' ')) return '▶' + padded.slice(1)
-  return '▶' + padded
-}
 
 export function renderHeader(game: Game, atBat: AtBat | null): string {
   if (game.gameState === 'Final') {
@@ -62,11 +56,13 @@ export function renderPitchInfo(
   _atBat: AtBat,
   pitch: Pitch,
   pitchIndex: number | null,
-  totalPitches: number
+  totalPitches: number,
+  perspective: 'catcher' | 'pitcher' = 'catcher',
 ): string {
   const horizArrow = pitch.breakHorizontal < 0 ? '←' : '→'
   const horizAbs = Math.abs(Math.round(pitch.breakHorizontal))
-  const zoneLabel = pitchIndex !== null ? `Pitch ${pitchIndex} / ${totalPitches}` : "Catcher's view"
+  const viewLabel = perspective === 'pitcher' ? "Pitcher's view" : "Catcher's view"
+  const zoneLabel = pitchIndex !== null ? `Pitch ${pitchIndex} / ${totalPitches}` : viewLabel
 
   return [
     zoneLabel,
@@ -77,18 +73,18 @@ export function renderPitchInfo(
     `Drop ↓${Math.round(pitch.breakVertical)}"`,
     `Move ${horizArrow}${horizAbs}"`,
     `${Math.round(pitch.startSpeed)}→${Math.round(pitch.endSpeed)}`,
-    '',
-    'double-tap: game list',
   ].join('\n')
 }
 
 // Contact info text for the center container.
 export function renderContactInfo(
   _atBat: AtBat,
-  pitch: Pitch
+  pitch: Pitch,
+  perspective: 'catcher' | 'pitcher' = 'catcher',
 ): string {
+  const viewLabel = perspective === 'pitcher' ? "Pitcher's view" : "Catcher's view"
   const lines = [
-    "Catcher's view",
+    viewLabel,
     pitch.contactResult ?? 'IN PLAY',
     '',
   ]
@@ -96,9 +92,6 @@ export function renderContactInfo(
   if (pitch.exitVelocity !== undefined) lines.push(`Exit  ${Math.round(pitch.exitVelocity)} mph`)
   if (pitch.launchAngle !== undefined)  lines.push(`Angle ${Math.round(pitch.launchAngle)}°`)
   if (pitch.hitDistance !== undefined)  lines.push(`Dist  ${Math.round(pitch.hitDistance)} ft`)
-
-  lines.push('')
-  lines.push('double-tap: game list')
 
   return lines.join('\n')
 }
@@ -109,28 +102,26 @@ export function renderSplitsInfo(atBat: AtBat, game: Game, stats: MatchupStats |
   const pitcherTeam = game.inningHalf === 'Top' ? game.homeTeam : game.awayTeam
   const lines = [
     `${batterTeam} B: ${atBat.batterLastName} (${atBat.batterHand})`,
-    `${pitcherTeam} P: ${atBat.pitcherLastName} (${atBat.pitcherHand}HP)`,
+    `${pitcherTeam} P: ${atBat.pitcherLastName} (${atBat.pitcherHand})`,
   ]
   if (stats) {
-    lines.push('', stats.avg, `${stats.hr} HR`, `${stats.ab} AB`)
+    lines.push('', 'Career H2H', stats.avg, `${stats.hr} HR`, `${stats.ab} AB`)
+  } else {
+    lines.push('', 'Career H2H', '...')
   }
   return lines.join('\n')
 }
 
-export function renderGameList(
-  games: Game[],
-  selectedIndex: number,
-  viewportStart: number = 0
-): string {
-  const lines: string[] = []
-  lines.push(center('Select a Game'))
-
-  games.slice(viewportStart, viewportStart + VIEWPORT_SIZE).forEach((g, i) => {
-    lines.push(centeredWithCursor(gameLabel(g), viewportStart + i === selectedIndex))
-  })
-
-  lines.push(center('scroll: navigate  tap: select'))
-  return lines.join('\n')
+export function renderGameList(games: Game[], selectedIndex: number): string {
+  if (games.length === 0) return 'No games today.'
+  const g = games[selectedIndex] ?? games[0]
+  const n = games.length
+  const pos = (selectedIndex % n) + 1
+  return [
+    `Select a Game  (${pos}/${n})`,
+    `▶ ${gameLabel(g)}`,
+    'scroll: next · tap: select',
+  ].join('\n')
 }
 
 export type AppScreenState = 'no-game' | 'loading' | 'error' | 'starting-soon' | 'delayed' | 'final'

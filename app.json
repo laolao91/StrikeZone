@@ -2,18 +2,19 @@
   "package_id": "com.strikezone.app",
   "edition": "202601",
   "name": "StrikeZone",
-  "version": "1.0.0",
+  "version": "1.3.1",
   "min_app_version": "0.1.0",
   "min_sdk_version": "0.0.10",
   "tagline": "Live MLB pitch data on your glasses",
   "description": "See the strike zone and live pitch data for MLB games — the broadcast view you miss when you're at the park.",
   "author": "StrikeZone",
+  "changelog": "SPLITS panel now alternates between career head-to-head stats and the batter's in-game line (hits, AB, walks) on each pitch. Fixed a network whitelist omission that caused the v1.3.0 submission to be rejected.",
   "entrypoint": "index.html",
   "permissions": [
     {
       "name": "network",
       "desc": "Fetch live MLB game data from the MLB Stats API",
-      "whitelist": ["https://statsapi.mlb.com"]
+      "whitelist": ["https://statsapi.mlb.com", "https://react.dev", "https://tailwindcss.com"]
     }
   ],
   "supported_languages": ["en"]

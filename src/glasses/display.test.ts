@@ -144,7 +144,7 @@ describe('renderSplitsInfo', () => {
     const splits = renderSplitsInfo(mockAtBat, mockGame, mockStats)
     expect(splits).toContain('BOS P:')
     expect(splits).toContain('Sale')
-    expect(splits).toContain('(LHP)')
+    expect(splits).toContain('(L)')
   })
 
   it('swaps teams in bottom half inning', () => {
@@ -168,21 +168,21 @@ describe('renderGameList', () => {
     { ...mockGame, gamePk: 2, awayTeam: 'LAD', homeTeam: 'SF', awayScore: 0, homeScore: 0, gameState: 'Preview' },
   ]
 
-  it('shows all games with team names', () => {
+  it('shows only the selected game with position indicator', () => {
     const body = renderGameList(games, 0)
     expect(body).toContain('NYY')
     expect(body).toContain('BOS')
-    expect(body).toContain('LAD')
-    expect(body).toContain('SF')
+    expect(body).not.toContain('LAD')
+    expect(body).toContain('(1/2)')
   })
 
-  it('marks selected game with an indicator, not others', () => {
-    const body = renderGameList(games, 0)
-    const lines = body.split('\n')
-    const nyy = lines.find(l => l.includes('NYY'))
-    const lad = lines.find(l => l.includes('LAD'))
-    expect(nyy).toContain('▶')
-    expect(lad).not.toContain('▶')
+  it('marks selected game with ▶ and advances position on index change', () => {
+    const body0 = renderGameList(games, 0)
+    const body1 = renderGameList(games, 1)
+    expect(body0).toContain('▶')
+    expect(body0).toContain('(1/2)')
+    expect(body1).toContain('LAD')
+    expect(body1).toContain('(2/2)')
   })
 })
 

@@ -78,11 +78,16 @@ export async function init(): Promise<void> {
     state.games = await _fetchSchedule(todayDateString())
   } catch {
     state.games = []
+    state.mode = 'error'
+    notify()
+    return
   }
 
-  if (state.selectedGamePk) {
+  const gameStillOnSchedule = state.games.some(g => g.gamePk === state.selectedGamePk)
+  if (state.selectedGamePk && gameStillOnSchedule) {
     await refresh()
   } else {
+    state.selectedGamePk = null
     state.mode = 'game-list'
     state.gameListIndex = 0
     state.gameListViewport = 0
@@ -90,45 +95,54 @@ export async function init(): Promise<void> {
   }
 }
 
+function _applyResult(result: LiveFeedResult): void {
+  const prevAtBat = state.atBat
+  state.game = result.game
+  state.atBat = result.atBat
+  state.lastError = null
+
+  if (result.atBat) {
+    const newMatchup =
+      !prevAtBat ||
+      prevAtBat.batterId !== result.atBat.batterId ||
+      prevAtBat.pitcherId !== result.atBat.pitcherId
+
+    if (newMatchup) {
+      state.matchupStats = null
+      state.pitchHistoryIndex = null
+      const key = `${result.atBat.batterId}-${result.atBat.pitcherId}`
+      matchupKey = key
+      fetchMatchupStats(result.atBat.batterId, result.atBat.pitcherId).then(
+        (stats) => {
+          if (matchupKey === key) {
+            state.matchupStats = stats
+            notify()
+          }
+        }
+      )
+    }
+  }
+
+  state.mode = 'pitch-view'
+  notify()
+}
+
 export async function refresh(): Promise<void> {
   if (!state.selectedGamePk) return
   try {
     const result = await _fetchLiveFeed(state.selectedGamePk)
-    const prevAtBat = state.atBat
-
-    state.game = result.game
-    state.atBat = result.atBat
-    state.lastError = null
-
-    if (result.atBat) {
-      const newMatchup =
-        !prevAtBat ||
-        prevAtBat.batterId !== result.atBat.batterId ||
-        prevAtBat.pitcherId !== result.atBat.pitcherId
-
-      if (newMatchup) {
-        state.matchupStats = null
-        state.pitchHistoryIndex = null
-        const key = `${result.atBat.batterId}-${result.atBat.pitcherId}`
-        matchupKey = key
-        fetchMatchupStats(result.atBat.batterId, result.atBat.pitcherId).then(
-          (stats) => {
-            if (matchupKey === key) {
-              state.matchupStats = stats
-              notify()
-            }
-          }
-        )
-      }
-    }
-
-    state.mode = 'pitch-view'
-    notify()
+    _applyResult(result)
   } catch {
     state.lastError = 'fetch-failed'
     state.mode = 'error'
     notify()
   }
+}
+
+// Apply a live feed result received from the phone side without re-fetching.
+export function applyLiveFeed(result: LiveFeedResult): void {
+  if (!state.selectedGamePk) return
+  _applyResult(result)
 }
 
 export function prevPitch(): void {
@@ -157,21 +171,9 @@ export function scrollGameList(direction: 'up' | 'down'): void {
   if (state.games.length === 0) return
   const n = state.games.length
   if (direction === 'down') {
-    const next = (state.gameListIndex + 1) % n
-    state.gameListIndex = next
-    if (next === 0) {
-      state.gameListViewport = 0
-    } else if (next >= state.gameListViewport + VIEWPORT_SIZE) {
-      state.gameListViewport = next - VIEWPORT_SIZE + 1
-    }
+    state.gameListIndex = (state.gameListIndex + 1) % n
   } else {
-    const prev = (state.gameListIndex - 1 + n) % n
-    state.gameListIndex = prev
-    if (prev === n - 1) {
-      state.gameListViewport = Math.max(0, n - VIEWPORT_SIZE)
-    } else if (prev < state.gameListViewport) {
-      state.gameListViewport = prev
-    }
+    state.gameListIndex = (state.gameListIndex - 1 + n) % n
   }
   notify()
 }
@@ -180,7 +182,8 @@ export async function selectGame(gamePk: number): Promise<void> {
   state.selectedGamePk = gamePk
   state.pitchHistoryIndex = null
   state.matchupStats = null
-  await saveSettings({ selectedGamePk: gamePk })
+  const current = await getSettings()
+  await saveSettings({ ...current, selectedGamePk: gamePk })
   window.dispatchEvent(new CustomEvent('strikezone:game-changed', { detail: { gamePk } }))
   await refresh()
 }
